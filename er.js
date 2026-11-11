@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.0.0";
+	const VERSION = "1.1.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -332,6 +332,72 @@
 					return ret;
 				});
 				return "game fix applied until the game ships it";
+			},
+		);
+
+		treat(
+			{
+				id: "baseline-options",
+				title: "Items with options in their baseline could not change options",
+				why: "R134 merges a new option into the item keeping the old value; when an add-on puts its options in BaselineProperty (e.g. Echo's 标志纹饰), the old options always won.",
+				patients: ["Echo", "any add-on item with BaselineProperty.TypeRecord"],
+			},
+			() => {
+				const entry = game(() => PropertyData?.TypeRecord);
+				// R133 merged options with its own PropertyUnion (new value wins); only R134's property system keeps the old one.
+				if (release() < 134 || !entry || typeof entry._union !== "function" || typeof w.ExtendedItemSetProperty !== "function") return false;
+				const merged = entry._union.call(entry, [{ a: 1 }, { a: 2 }]);
+				if (!merged || merged.a !== 1) return false;
+				hook("ExtendedItemSetProperty", 1000, (args, next) => {
+					const [C, item, previousProperty, newProperty, push = false, refresh = true] = args;
+					// Merge before the game refreshes (and possibly sends) the item, then refresh as asked.
+					const res = next([C, item, previousProperty, newProperty, false, false]);
+					const chosen = newProperty && newProperty.TypeRecord;
+					if (item && item.Property && chosen && typeof chosen === "object") {
+						item.Property.TypeRecord = { ...(item.Property.TypeRecord || {}), ...chosen };
+					}
+					if (refresh || push) w.CharacterRefresh(C, push, false);
+					return res;
+				});
+				return "the chosen option wins again, like R133";
+			},
+		);
+
+		treat(
+			{
+				id: "default-color",
+				title: "Add-on items lost their default colours",
+				why: "R134 reads default colours only from each layer's Color; the item-level DefaultColor add-ons use is ignored, so their items come out uncoloured and some (e.g. Echo's 淫纹) crash while drawing.",
+				patients: ["Echo", "any add-on with its own items"],
+			},
+			() => {
+				if (typeof w.AssetAssignDefaultColor !== "function" || typeof w.AssetMapLayer !== "function") return false;
+				// Add-ons often call the original AssetAdd (skipping hooks), but AssetAdd itself still calls these two
+				// by name: AssetMapLayer sees the item definition, AssetAssignDefaultColor sets the colours.
+				/** @type {WeakMap<object, any>} */
+				const defs = new WeakMap();
+				hook("AssetMapLayer", 1000, (args, next) => {
+					if (args[1] && args[3]) defs.set(args[1], args[3]);
+					return next(args);
+				});
+				hook("AssetAssignDefaultColor", 1000, (args, next) => {
+					const res = next(args);
+					const asset = args[0];
+					const def = asset && defs.get(asset);
+					if (!def || def.DefaultColor == null) return res;
+					// Add-ons already written for R134 colour their layers themselves.
+					if (Array.isArray(def.Layer) && def.Layer.some((/** @type {any} */ l) => Array.isArray(l.Color) && l.Color.length)) return res;
+					const fill = asset.Group.ColorSchema[0];
+					const old = Array(asset.ColorableLayerCount).fill(fill);
+					if (typeof def.DefaultColor === "string") old.fill(def.DefaultColor);
+					else if (Array.isArray(def.DefaultColor)) def.DefaultColor.slice(0, old.length).forEach((/** @type {string} */ c, /** @type {number} */ i) => (old[i] = c));
+					asset.DefaultColor = old;
+					for (const layer of asset.Layer) {
+						if (layer.AllowColorize && typeof layer.ColorIndex === "number" && old[layer.ColorIndex] !== undefined) layer.Color = [old[layer.ColorIndex]];
+					}
+					return res;
+				});
+				return "add-on items get their own default colours back";
 			},
 		);
 

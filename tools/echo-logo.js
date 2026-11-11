@@ -1,0 +1,44 @@
+// Traces one Echo item (标志纹饰) step by step on a build. usage: node tools/echo-logo.js <live|beta> <er|noer>
+const fs = require('fs');
+const path = require('path');
+const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
+const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/' };
+const [build, mode] = process.argv.slice(2);
+(async () => {
+	const browser = await puppeteer.launch({ executablePath: process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new' });
+	const page = await browser.newPage();
+	const logs = [];
+	page.on('console', (m) => { if (/标志|TypeRecord|Cannot set|invalid|Invalid/.test(m.text())) logs.push(m.type() + ' ' + m.text().slice(0, 300)); });
+	if (mode === 'er') await page.evaluateOnNewDocument(fs.readFileSync(path.join(__dirname, '..', 'er.js'), 'utf8'));
+	await page.goto(BUILDS[build], { waitUntil: 'load', timeout: 120000 });
+	await page.waitForFunction(() => typeof Asset !== 'undefined' && Asset.length > 1000 && typeof Player !== 'undefined' && !!Player, { timeout: 120000 });
+	await page.evaluate(() => { window.ServerSend = () => {}; });
+	const before = await page.evaluate(() => Asset.length);
+	await page.evaluate(() => { const el = document.createElement('script'); el.type = 'module'; el.src = 'https://sugarchain-studio.github.io/echo-clothing-ext/bc-cloth.js'; document.head.appendChild(el); });
+	await page.waitForFunction((n) => Asset.length > n + 1000, { timeout: 60000 }, before);
+	await new Promise((r) => setTimeout(r, 3000));
+	const res = await page.evaluate(() => {
+		const out = {};
+		const C = CharacterLoadNPC('NPC_ERLogo');
+		CharacterAppearanceSetDefault(C);
+		const a = Asset.find((x) => x.Group.Name === 'BodyMarkings' && x.Name === '标志纹饰');
+		InventoryWear(C, a.Name, a.Group.Name);
+		const tr = () => JSON.stringify(InventoryGet(C, a.Group.Name).Property?.TypeRecord);
+		out.worn = tr();
+		const data = ExtendedItemGetData(a, ExtendedArchetype.MODULAR);
+		const mod = (k) => data.modules.find((m) => m.Key === k);
+		out.pNames = mod('p').Options.map((o) => o.Name).slice(0, 3).concat(['...', mod('p').Options[17].Name]);
+		out.aNames = mod('a').Options.map((o) => o.Name);
+		out.aOpt1 = JSON.stringify(mod('a').Options[1].Property);
+		out.p17 = JSON.stringify(mod('p').Options[17].Property);
+		const item = InventoryGet(C, a.Group.Name);
+		ExtendedItemSetOption(data, C, item, mod('p').Options[17], mod('p').Options[0], false, false);
+		out.afterSetOptionP17 = tr();
+		ExtendedItemSetOption(data, C, InventoryGet(C, a.Group.Name), mod('b').Options[1], mod('b').Options[0], false, false);
+		out.afterSetOptionB1 = tr();
+		out.gathered = ExtendedItemGatherOptions(InventoryGet(C, a.Group.Name)).map((o) => o.Name).join(',');
+		return out;
+	});
+	console.log(build, mode, JSON.stringify(res, null, 1), logs.slice(0, 10));
+	await browser.close();
+})().catch((e) => { console.error(e); process.exit(1); });
