@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.4.0";
+	const VERSION = "1.4.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -683,6 +683,7 @@
 #er-panel .er-cross::before, #er-panel .er-cross::after { content: ""; position: absolute; background: #d81e1e; border-radius: 2px; }
 #er-panel .er-cross::before { left: 13px; top: 6px; width: 8px; height: 22px; }
 #er-panel .er-cross::after { left: 6px; top: 13px; width: 22px; height: 8px; }
+#er-panel .er-logo { width: 40px; height: 40px; flex: none; border-radius: 9px; background: #fff; }
 #er-panel .er-title { font-weight: 700; font-size: 17px; }
 #er-panel .er-sub { opacity: .9; font-size: 13px; }
 #er-panel .er-close { margin-left: auto; background: rgba(255,255,255,.18); color: #fff; border: 0; border-radius: 8px; width: 34px; height: 34px; font-size: 18px; cursor: pointer; }
@@ -818,7 +819,11 @@
 			closePanel();
 			onClose?.();
 		});
-		head.append(el("div", "er-cross"), titles, close);
+		const logo = /** @type {HTMLImageElement} */ (el("img", "er-logo"));
+		logo.src = LOGO;
+		logo.alt = "";
+		logo.addEventListener("error", () => logo.replaceWith(el("div", "er-cross")));
+		head.append(logo, titles, close);
 		const body = el("div", "er-body");
 		const foot = el("div", "er-foot");
 		const link = el("a", undefined, "Source and reports");
@@ -836,7 +841,10 @@
 		renderPanel();
 	}
 
-	/** A red cross for the Preferences > Extensions button. */
+	/** ER's logo, from the repo (the same files the install page uses). */
+	const LOGO = "https://cdn.jsdelivr.net/gh/Proudkiller0015/extension-repairer@main/icon-128.png";
+
+	/** A red cross, used if the logo cannot load. */
 	const ICON = `data:image/svg+xml,${encodeURIComponent(
 		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#d81e1e"/><rect x="26" y="12" width="12" height="40" rx="3" fill="#fff"/><rect x="12" y="26" width="40" height="12" rx="3" fill="#fff"/></svg>',
 	)}`;
@@ -849,7 +857,7 @@
 		w.PreferenceRegisterExtensionSetting({
 			Identifier: "ER",
 			ButtonText: "ER - Extension Repairer",
-			Image: ICON,
+			Image: LOGO,
 			load: () => openPanel(() => game(() => PreferenceSubscreenExtensionsClear())),
 			run: () => {},
 			click: () => {},

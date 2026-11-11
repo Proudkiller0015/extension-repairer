@@ -1,3 +1,5 @@
+<img src="logo-512.png" alt="ER - Extension Repairer logo" width="160" align="right">
+
 # ✚ ER - Extension Repairer
 
 An emergency room for Bondage Club add-ons.
