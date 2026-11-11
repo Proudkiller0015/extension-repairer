@@ -54,7 +54,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.beta);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'chat-width', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'chat-width', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
 			const space = await page.evaluate(() => {
 				ChatRoomData = { Space: 'M', Game: 'LARP' };
 				const inRoom = [ChatRoomSpace, ChatRoomGame];
@@ -91,6 +91,21 @@ const roundTrip = () => {
 			const trip = await page.evaluate(roundTrip);
 			check('beta: Bar Stool decal survives to another player', trip.BarStool && trip.BarStool.mine === 2 && trip.BarStool.theirs === 2, trip);
 			check('beta: Hypnotic Visor option survives to another player', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);
+			const craft = await page.evaluate(() => {
+				window.BCX_Loaded = true;
+				Player.MemberNumber = 1001;
+				Player.Name = 'Rose';
+				CharacterAppearanceSetDefault(Player);
+				InventoryWear(Player, 'LeatherCollar', 'ItemNeck');
+				const full = { Name: 'Cursed collar', MemberName: 'Rose', MemberNumber: 1001, Description: 'test', Property: 'Secure', Lock: '', Color: '#ff0000', Item: 'LeatherCollar', Private: false, ItemProperty: {} };
+				InventoryGet(Player, 'ItemNeck').Craft = { ...full };
+				const bundle = ServerAppearanceBundle(Player.Appearance).map((b) => (b.Group === 'ItemNeck' ? { ...b, Craft: { Name: full.Name, MemberName: full.MemberName, MemberNumber: full.MemberNumber, Description: full.Description, Private: false } } : b));
+				ServerAppearanceLoadFromBundle(Player, 'Female3DCG', bundle, 1001);
+				const after = InventoryGet(Player, 'ItemNeck')?.Craft;
+				delete window.BCX_Loaded;
+				return { property: after?.Property, item: after?.Item, worn: InventoryGet(Player, 'ItemNeck')?.Asset?.Name ?? null, after: after ?? null, sent: bundle.find((b) => b.Group === 'ItemNeck')?.Craft ?? null, chart: ER.chart().find((c) => c.id === 'bcx-curse-loop') };
+			});
+			check('beta: BCX curse fix keeps the full craft when the server echoes a partial one', craft.property === 'Secure' && craft.item === 'LeatherCollar', craft);
 			const sw = await page.evaluate(() => {
 				const out = {};
 				const call = () => { try { return typeof PreferenceArousalIsActive(); } catch (e) { return 'throws'; } };
@@ -132,7 +147,7 @@ const roundTrip = () => {
 		{
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
-			check('live: every check is healthy (nothing treated)', Object.values(chart).every((s) => s === 'healthy'), chart);
+			check('live: every check is healthy except the BCX curse fix (needed since R133)', Object.entries(chart).every(([id, s]) => s === 'healthy' || (id === 'bcx-curse-loop' && s === 'treated')), chart);
 			check('live: no stand-ins added', (await page.evaluate(() => ER.standIns())).length === 0, await page.evaluate(() => ER.standIns()));
 			const trip = await page.evaluate(roundTrip);
 			check('live: Hypnotic Visor option round trip still works', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);

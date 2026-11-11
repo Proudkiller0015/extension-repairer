@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.5.1";
+	const VERSION = "1.6.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -48,6 +48,7 @@
 		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: "1.136.5" },
 		ULTRAbc: { label: "ULTRAbc", mods: ["ULTRAbc"], tested: "6.4" },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
+		BCX: { label: "BCX", mods: ["BCX"], tested: "1.1.23" },
 	};
 
 	/** Where the player's choices are kept (per browser, read before login so fixes can start early). */
@@ -372,6 +373,15 @@
 			},
 			() => {
 				if (release() < 134) return false;
+				// Game MR !6950 adds this rule; once the game ships it, ER has nothing to do.
+				const gameHasIt = [...document.styleSheets].some((sheet) => {
+					try {
+						return [...sheet.cssRules].some((r) => r instanceof CSSStyleRule && r.selectorText === "#chat-room-div" && r.style.minWidth === "0px");
+					} catch {
+						return false;
+					}
+				});
+				if (gameHasIt) return false;
 				const style = document.createElement("style");
 				style.id = "er-chat-width";
 				style.textContent = [
@@ -503,6 +513,71 @@
 					return next([new Request(req, { headers })]);
 				});
 				return "redirected pictures load again";
+			},
+		);
+
+		treat(
+			{
+				id: "bcx-curse-loop",
+				ext: "BCX",
+				title: "BCX curses on crafted items looped",
+				why: "Since R133 the server sends crafted items back with only part of their craft data; BCX curses compare the full craft, see a change, \"undo all changes\" and loop until BCX's protection switches the curse off.",
+				patients: ["BCX"],
+			},
+			() => {
+				if (release() < 133 || typeof w.ServerAppearanceLoadFromBundle !== "function" || typeof w.ChatRoomSyncItem !== "function") return false;
+				/** The keys a partial craft keeps. */
+				const PARTIAL = ["Name", "MemberName", "MemberNumber", "Description", "Effects", "Private"];
+				const same = (/** @type {unknown} */ a, /** @type {unknown} */ b) => (typeof w.CommonDeepEqual === "function" ? w.CommonDeepEqual(a, b) : JSON.stringify(a) === JSON.stringify(b));
+				const copy = (/** @type {any} */ o) => (typeof w.CommonCloneDeep === "function" ? w.CommonCloneDeep(o) : JSON.parse(JSON.stringify(o)));
+				/** A full craft has data beyond what a partial one keeps. @param {any} craft */
+				const isFull = (craft) => craft != null && typeof craft === "object" && Object.keys(craft).some((k) => !PARTIAL.includes(k) && k !== "Partial");
+				/** The full crafts of the player's worn items, by group. @param {any[]} appearance @param {string[]} [groups] */
+				const snapshot = (appearance, groups) => {
+					/** @type {Map<string, { name: string, craft: any }>} */
+					const saved = new Map();
+					for (const item of appearance || []) {
+						if (!item?.Asset || !isFull(item.Craft)) continue;
+						const group = item.Asset.Group.Name;
+						if (groups && !groups.includes(group)) continue;
+						saved.set(group, { name: item.Asset.Name, craft: copy(item.Craft) });
+					}
+					return saved;
+				};
+				/** Puts the full craft back on items that came back partial but are otherwise the same craft. */
+				const restore = (/** @type {any[]} */ appearance, /** @type {Map<string, { name: string, craft: any }>} */ saved) => {
+					for (const item of appearance || []) {
+						if (!item?.Asset || item.Craft == null || typeof item.Craft !== "object" || isFull(item.Craft)) continue;
+						const old = saved.get(item.Asset.Group.Name);
+						if (!old || old.name !== item.Asset.Name) continue;
+						// The game fills in defaults on load (Effects: {}, Private: false), so missing and default count as equal.
+						const norm = (/** @type {string} */ k, /** @type {any} */ v) => (v ?? (k === "Effects" ? {} : k === "Private" ? false : null));
+						if (!PARTIAL.every((k) => same(norm(k, old.craft[k]), norm(k, item.Craft[k])))) continue;
+						item.Craft = Object.assign(old.craft, item.Craft, { Partial: old.craft.Partial });
+						if (item.Craft.Partial === undefined) delete item.Craft.Partial;
+					}
+				};
+				const bcx = () => !!w.BCX_Loaded;
+				// Full appearance reloads: the echo of the player's own appearance, room syncs, refreshes.
+				hook("ServerAppearanceLoadFromBundle", 0, (args, next) => {
+					const C = args[0];
+					if (!bcx() || C !== w.Player || args[4]) return next(args);
+					const saved = snapshot(C.Appearance);
+					const res = next(args);
+					if (saved.size) restore(C.Appearance, saved);
+					return res;
+				});
+				// One item changed by someone else (e.g. tightening the cursed collar).
+				hook("ChatRoomSyncItem", 0, (args, next) => {
+					const data = args[0];
+					const group = data?.Item?.Group;
+					if (!bcx() || typeof group !== "string" || data.Item.Target !== w.Player?.MemberNumber) return next(args);
+					const saved = snapshot(w.Player.Appearance, [group]);
+					const res = next(args);
+					if (saved.size) restore(w.Player.Appearance, saved);
+					return res;
+				});
+				return "keeps the full craft BCX's curses compare against";
 			},
 		);
 
