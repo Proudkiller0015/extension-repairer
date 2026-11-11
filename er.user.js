@@ -25,8 +25,14 @@
  */
 (function () {
 	"use strict";
-	const script = document.createElement("script");
-	script.src = `https://proudkiller0015.github.io/extension-repairer/er.js?v=${Math.floor(Date.now() / 60000)}`;
-	script.crossOrigin = "anonymous";
-	(document.head || document.documentElement).appendChild(script);
+	const add = () => {
+		const parent = document.head || document.documentElement;
+		// At document-start the page may not have an element to attach to yet.
+		if (!parent) return void setTimeout(add, 5);
+		const script = document.createElement("script");
+		script.src = `https://proudkiller0015.github.io/extension-repairer/er.js?v=${Math.floor(Date.now() / 60000)}`;
+		script.crossOrigin = "anonymous";
+		parent.appendChild(script);
+	};
+	add();
 })();
