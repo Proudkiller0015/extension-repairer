@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.2.0";
+	const VERSION = "1.3.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -353,6 +353,51 @@
 					return next([new Request(req, { headers })]);
 				});
 				return "redirected pictures load again";
+			},
+		);
+
+		treat(
+			{
+				id: "ubc-info-sheet",
+				title: "ULTRAbc drew its old profile sheet over the new one",
+				why: "R134 rebuilt the profile sheet as page elements; ULTRAbc still draws its own canvas copy of the old sheet on top, so the profile shows twice.",
+				patients: ["ULTRAbc"],
+			},
+			() => {
+				if (release() < 134 || typeof w.InformationSheetRun !== "function") return false;
+				/** @type {boolean | undefined} */
+				let ubc;
+				const hasUbc = () => (ubc ??= (w.bcModSdk?.getModsInfo?.() ?? []).some((/** @type {any} */ m) => m.name === "ULTRAbc") || undefined) === true;
+				/** A canvas nobody sees, for ULTRAbc's old sheet. */
+				let scratch = /** @type {CanvasRenderingContext2D | null} */ (null);
+				let reached = false;
+				// Lowest priority: tells us whether the game's own sheet was reached.
+				hook("InformationSheetRun", -1000, (args, next) => {
+					reached = true;
+					return next(args);
+				});
+				// Just above ULTRAbc's hook (priority 4): add-ons with higher priorities run normally first.
+				hook("InformationSheetRun", 5, (args, next) => {
+					if (!hasUbc()) return next(args);
+					reached = false;
+					const real = game(() => MainCanvas);
+					if (!scratch) {
+						const c = document.createElement("canvas");
+						c.width = real?.canvas?.width ?? 2000;
+						c.height = real?.canvas?.height ?? 1000;
+						scratch = c.getContext("2d");
+					}
+					let res;
+					try {
+						MainCanvas = scratch;
+						res = next(args);
+					} finally {
+						MainCanvas = real;
+					}
+					if (!reached && sdk) sdk.callOriginal("InformationSheetRun", args);
+					return res;
+				});
+				return "the game's profile sheet shows alone";
 			},
 		);
 

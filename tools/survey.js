@@ -94,6 +94,24 @@ async function runOne(browser, addon, dist) {
 			}
 		};
 		await step('mainhall', () => { if (CurrentScreen !== 'MainHall') CommonSetScreen('Room', 'MainHall'); });
+		if (process.env.ER_SHOT) {
+			await sleep(4000);
+			for (let i = 0; i < 4; i++) { await page.evaluate(() => { try { GameRun(performance.now()); } catch (e) { console.error('ER frame: ' + e.message); } }); await sleep(300); }
+			await page.screenshot({ path: path.join(outDir, `${build}-${addon.id}-mainhall.png`) });
+		}
+		if (process.env.ER_INFO) {
+			await page.evaluate(() => InformationSheetLoadCharacter(Player)).catch((e) => push('step:info', e.message));
+			await sleep(3000);
+			const infoScreen = await page.evaluate(() => CurrentScreen);
+			push('info', 'screen ' + infoScreen);
+			for (let i = 0; i < 4; i++) {
+				await page.evaluate(() => { try { MainCanvas.fillStyle = '#ccc'; MainCanvas.fillRect(0, 0, 2000, 1000); InformationSheetRun(); } catch (e) { console.error('ER frame: ' + e.message); } });
+				await sleep(400);
+			}
+			push('info', 'MainCanvas is the real one: ' + await page.evaluate(() => MainCanvas === document.getElementById('MainCanvas')?.getContext('2d') || MainCanvas?.canvas?.id));
+			await page.screenshot({ path: path.join(outDir, `${build}-${addon.id}-info.png`) });
+			await page.evaluate(() => { try { InformationSheetExit(); } catch {} });
+		}
 		await step('chatroom', () => {
 			const other = CharacterLoadOnline({ ID: 'g', Name: 'Gangriel', Nickname: 'Gangriel', MemberNumber: 2002, AssetFamily: 'Female3DCG', Appearance: ServerAppearanceBundle(Player.Appearance), Title: '', Ownership: null, Lovership: [], ItemPermission: 1, BlockItems: [], LimitedItems: [], FavoriteItems: [], WhiteList: [], BlackList: [], OnlineSharedSettings: { GameVersion }, ArousalSettings: {}, Game: {}, Inventory: [] }, 2002);
 			ChatRoomData = { Name: 'ER', Description: '', Admin: [Player.MemberNumber], Whitelist: [], Ban: [], BlockCategory: [], Character: [], Limit: 10, Background: 'MainHall', Space: '', Visibility: ['All'], Access: ['All'], Language: 'EN', Custom: {}, MapData: { Type: 'Never' } };
