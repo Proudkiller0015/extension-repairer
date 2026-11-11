@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.1.0";
+	const VERSION = "1.2.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -332,6 +332,27 @@
 					return ret;
 				});
 				return "game fix applied until the game ships it";
+			},
+		);
+
+		treat(
+			{
+				id: "fetch-request",
+				title: "Add-on pictures failed to load (CommonFetch with a Request and options)",
+				why: "R134's image loader calls CommonFetch(url, {headers}); add-ons that redirect pictures turn the url into a Request, and R134's CommonFetch refuses a Request together with options, so every redirected picture failed (Echo's hair, eyes, sleeves...).",
+				patients: ["Echo", "any add-on that redirects game files"],
+			},
+			() => {
+				if (typeof w.CommonFetch !== "function" || release() < 134) return false;
+				// Lowest priority: runs last, after the add-on has swapped in its Request.
+				hook("CommonFetch", -1000, (args, next) => {
+					const [req, options] = args;
+					if (!(req instanceof Request) || options == null) return next(args);
+					const headers = new Headers(req.headers);
+					for (const [k, v] of new Headers(options.headers ?? undefined)) if (!headers.has(k)) headers.set(k, v);
+					return next([new Request(req, { headers })]);
+				});
+				return "redirected pictures load again";
 			},
 		);
 

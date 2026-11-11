@@ -29,6 +29,7 @@ Install page: https://proudkiller0015.github.io/extension-repairer/
 | `Controller*` | Gamepad support was removed | BCT, Themed, ULTRAbc, EBCH, MoonCEBC |
 | `InfiltrationMission` / `Target` / `Difficulty` | Merged into `InfiltrationMissionState` | ULTRAbc (Pandora mission tools) |
 | Modular items only saved their first option | Game bug in the R134 beta (fix waiting as game MR !6947) | Everyone: Bar Stool decal, Hypnotic Visor, Echo items |
+| Add-on pictures never loaded | R134's image loader passes options to `CommonFetch`, which now refuses them with a `Request`; add-ons that redirect pictures (Echo) lost hair, eyes, sleeves and more | Echo, any add-on that redirects game files |
 | Add-on items lost their default colours | R134 only reads colours set on each layer; the item-level `DefaultColor` add-ons use is ignored (about 420 Echo items came out uncoloured, and 淫纹 crashed while drawing) | Echo, any add-on with its own items |
 | Items with options in their baseline could not change | R134 keeps the old option when merging; items with `BaselineProperty.TypeRecord` (Echo's 标志纹饰) never changed | Echo |
 | `PreferenceArousalIsActive()` | Now needs a character; old calls crashed | WCE |
