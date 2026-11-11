@@ -54,7 +54,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.beta);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'chat-width', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
 			const space = await page.evaluate(() => {
 				ChatRoomData = { Space: 'M', Game: 'LARP' };
 				const inRoom = [ChatRoomSpace, ChatRoomGame];

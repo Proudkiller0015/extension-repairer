@@ -68,6 +68,9 @@ async function runOne(browser, addon, dist) {
 				}), version.source, addon.type === 'module');
 			}
 		}
+		for (const extra of (process.env.ER_EXTRA || '').split(',').filter(Boolean)) {
+			await page.evaluate((src) => new Promise((res) => { const s = document.createElement('script'); s.src = src; s.crossOrigin = 'anonymous'; s.onload = s.onerror = () => res(); document.head.appendChild(s); }), extra);
+		}
 		await sleep(4000);
 		// A fake login, the same shape the server sends.
 		await page.evaluate(() => {
@@ -131,6 +134,13 @@ async function runOne(browser, addon, dist) {
 			await sleep(500);
 			await page.screenshot({ path: path.join(outDir, `${build}-${addon.id}-panel.png`) });
 			await page.evaluate(() => document.getElementById('er-panel')?.remove());
+		}
+		if (process.env.ER_EVAL) {
+			await sleep(1500);
+			const r = await page.evaluate(process.env.ER_EVAL).catch((e) => 'eval error: ' + e.message);
+			push('eval', typeof r === 'string' ? r : JSON.stringify(r));
+			await sleep(2500);
+			await page.screenshot({ path: path.join(outDir, `${build}-${addon.id}-eval.png`) });
 		}
 		await step('dialog', () => { ChatRoomFocusCharacter?.(Player) ?? DialogLoad?.(Player); });
 		await step('wardrobe', () => { DialogLeave?.(); CharacterAppearanceLoadCharacter?.(Player); });

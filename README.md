@@ -37,6 +37,7 @@ Every extension and every fix has a switch: **Auto** (the default), **On** or **
 | `Controller*` | Gamepad support was removed | BCT, Themed, ULTRAbc, EBCH, MoonCEBC |
 | `InfiltrationMission` / `Target` / `Difficulty` | Merged into `InfiltrationMissionState` | ULTRAbc (Pandora mission tools) |
 | Modular items only saved their first option | Game bug in the R134 beta (fix waiting as game MR !6947) | Everyone: Bar Stool decal, Hypnotic Visor, Echo items |
+| The chat squeezed the room or map off the screen | R134 lays the chat out next to the room in a flexible row without a minimum width, so one wide message or add-on element widens the chat until the room view is gone (normal and map rooms) | Everyone |
 | ULTRAbc drew its old profile sheet over the new one | R134 rebuilt the profile sheet as page elements; ULTRAbc still draws its canvas copy on top. While ULTRAbc runs, ER sends its old sheet to a hidden canvas | ULTRAbc |
 | Add-on pictures never loaded | R134's image loader passes options to `CommonFetch`, which now refuses them with a `Request`; add-ons that redirect pictures (Echo) lost hair, eyes, sleeves and more | Echo, any add-on that redirects game files |
 | Add-on items lost their default colours | R134 only reads colours set on each layer; the item-level `DefaultColor` add-ons use is ignored (about 420 Echo items came out uncoloured, and 淫纹 crashed while drawing) | Echo, any add-on with its own items |

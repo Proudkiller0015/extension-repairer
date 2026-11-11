@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.5.0";
+	const VERSION = "1.5.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -360,6 +360,28 @@
 				ControllerSupportKeyDown: noop(false),
 				ControllerActiveAreas: variable([]),
 			}),
+		);
+
+		treat(
+			{
+				id: "chat-width",
+				ext: "game",
+				title: "Long chat messages pushed the map off the screen",
+				why: "R134's map rooms put the chat next to the map in a flexible row; the chat has no minimum width, so one long word or link widens it until the map is squeezed to nothing.",
+				patients: ["everyone in map rooms"],
+			},
+			() => {
+				if (release() < 134) return false;
+				const style = document.createElement("style");
+				style.id = "er-chat-width";
+				style.textContent = [
+					"#chat-room-div { min-width: 0; }",
+					"#chat-room-content { flex-shrink: 0; }",
+					"#TextAreaChatLog { overflow-wrap: anywhere; }",
+				].join("\n");
+				(document.head || document.documentElement).append(style);
+				return "the chat keeps the width you set";
+			},
 		);
 
 		treat(
