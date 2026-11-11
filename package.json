@@ -1,0 +1,12 @@
+{
+  "name": "extension-repairer",
+  "private": true,
+  "description": "ER - Extension Repairer: keeps Bondage Club add-ons working when a game update breaks them.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}
