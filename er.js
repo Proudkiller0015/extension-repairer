@@ -436,7 +436,11 @@
 
 	// ---- Start ----
 
-	const ready = () => typeof w.GameVersion === "string" && w.GameVersion !== "R0" && typeof w.CommonSetScreen === "function";
+	/**
+	 * The game's own scripts are all in index.html, so they have all run once the document is parsed. Starting
+	 * earlier could put a stand-in in front of a name the game is still about to declare.
+	 */
+	const ready = () => document.readyState !== "loading" && typeof w.GameVersion === "string" && typeof w.CommonSetScreen === "function";
 
 	function start() {
 		standInFixes();
