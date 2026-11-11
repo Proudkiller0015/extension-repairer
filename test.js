@@ -91,7 +91,40 @@ const roundTrip = () => {
 			const trip = await page.evaluate(roundTrip);
 			check('beta: Bar Stool decal survives to another player', trip.BarStool && trip.BarStool.mine === 2 && trip.BarStool.theirs === 2, trip);
 			check('beta: Hypnotic Visor option survives to another player', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);
-			check('beta: /er is registered', await page.waitForFunction(() => Commands.some((c) => c.Tag === 'er'), { timeout: 5000 }).then(() => true, () => false), false);
+			const sw = await page.evaluate(() => {
+				const out = {};
+				const call = () => { try { return typeof PreferenceArousalIsActive(); } catch (e) { return 'throws'; } };
+				out.auto = call();
+				// A WCE newer than the tested one: ER pauses its WCE fixes by itself.
+				bcModSdk.registerMod({ name: 'WCE', fullName: 'WCE', version: '9.9.9' });
+				out.paused = call();
+				out.pausedVerdict = ER.chart().find((c) => c.id === 'arousal-active').status;
+				return out;
+			});
+			check('beta: a fix runs on Auto', sw.auto === 'boolean', sw);
+			check('beta: a newer extension pauses its fixes on Auto', sw.paused === 'throws', sw);
+			check('beta: the panel opens', await page.evaluate(() => { ER.open(); return !!document.getElementById('er-panel'); }), false);
+			check('beta: the panel shows the pause', await page.evaluate(() => /paused by ER: WCE updated to 9\.9\.9/.test(document.getElementById('er-panel').textContent)), false);
+			check('beta: ER is in Preferences > Extensions', await page.evaluate(() => !!PreferenceExtensionsSettings.ER), false);
+			const forcedOn = await page.evaluate(() => {
+				const box = [...document.querySelectorAll('#er-panel .er-ext')].find((b) => b.querySelector('.er-ext-name').textContent === 'WCE');
+				[...box.querySelector('.er-ext-head .er-seg').children].find((b) => b.textContent === 'On').click();
+				let r;
+				try { r = typeof PreferenceArousalIsActive(); } catch { r = 'throws'; }
+				return { r, saved: localStorage.getItem('ER.settings') };
+			});
+			check('beta: forcing an extension On overrides the pause', forcedOn.r === 'boolean' && /"WCE":"on"/.test(forcedOn.saved), forcedOn);
+			const forcedOff = await page.evaluate(() => {
+				const box = [...document.querySelectorAll('#er-panel .er-ext')].find((b) => b.querySelector('.er-ext-name').textContent === 'WCE');
+				[...box.querySelector('.er-ext-head .er-seg').children].find((b) => b.textContent === 'Off').click();
+				let r;
+				try { r = typeof PreferenceArousalIsActive(); } catch { r = 'throws'; }
+				localStorage.removeItem('ER.settings');
+				return r;
+			});
+			check('beta: forcing an extension Off stops its fixes at once', forcedOff === 'throws', forcedOff);
+			await page.evaluate(() => document.getElementById('er-panel').remove());
+			check('beta: /er is registered',await page.waitForFunction(() => Commands.some((c) => c.Tag === 'er'), { timeout: 5000 }).then(() => true, () => false), false);
 			check('beta: no page errors', errors.length === 0, errors);
 			await page.close();
 		}

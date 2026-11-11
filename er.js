@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.3.0";
+	const VERSION = "1.4.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -22,11 +22,109 @@
 
 	/**
 	 * One line on the chart per fix.
-	 * @typedef {{ id: string, title: string, why: string, patients: string[], status: "treated" | "healthy" | "failed", detail?: string }} ChartEntry
+	 * @typedef {{ id: string, ext: string, title: string, why: string, patients: string[], status: "treated" | "healthy" | "failed" | "off", detail?: string }} ChartEntry
 	 */
+
+	/**
+	 * The extensions ER has fixes for. `mods` are their ModSDK names; `tested` is the version ER's fixes were
+	 * checked against. When the player runs a different version, that extension's fixes pause (its author may
+	 * have fixed it) until ER is tested again, unless the player keeps them on.
+	 * @type {Record<string, { label: string, mods?: string[], tested?: string }>}
+	 */
+	const EXTENSIONS = {
+		game: { label: "Game changes (help every add-on)" },
+		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: "1.136.5" },
+		ULTRAbc: { label: "ULTRAbc", mods: ["ULTRAbc"], tested: "6.4" },
+		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
+	};
+
+	/** Where the player's choices are kept (per browser, read before login so fixes can start early). */
+	const SETTINGS_KEY = "ER.settings";
+
+	/**
+	 * Per extension and per fix: "auto" (ER decides, the default), "on" (forced on, even while paused) or "off".
+	 * A fix's own setting wins over its extension's.
+	 * @typedef {"auto" | "on" | "off"} Mode
+	 * @typedef {{ mode: Record<string, Mode> }} Settings
+	 */
+
+	/** @returns {Settings} */
+	function loadSettings() {
+		try {
+			const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+			/** @type {Record<string, Mode>} */
+			const mode = {};
+			for (const [k, v] of Object.entries(s.mode && typeof s.mode === "object" ? s.mode : {})) if (v === "on" || v === "off") mode[k] = v;
+			return { mode };
+		} catch {
+			return { mode: {} };
+		}
+	}
+
+	/** @type {Settings} */
+	const settings = loadSettings();
+
+	function saveSettings() {
+		try {
+			localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+		} catch {
+			// Storage full or blocked: the choice still holds until reload.
+		}
+	}
+
+	/** @param {string} key @returns {Mode} */
+	const modeOf = (key) => settings.mode[key] ?? "auto";
+
+	/**
+	 * The player's forced choice for a fix, if any: its own, else its extension's.
+	 * @param {{ id: string, ext: string }} fix
+	 * @returns {Mode}
+	 */
+	const forced = (fix) => (modeOf(fix.id) !== "auto" ? modeOf(fix.id) : modeOf(fix.ext));
+
+	/**
+	 * The version of an extension the player runs, once it has registered with ModSDK.
+	 * @param {string} ext
+	 * @returns {string | undefined}
+	 */
+	function installedVersion(ext) {
+		const names = EXTENSIONS[ext]?.mods;
+		if (!names) return undefined;
+		const mod = (w.bcModSdk?.getModsInfo?.() ?? []).find((/** @type {any} */ m) => names.includes(m.name));
+		return mod ? String(mod.version) : undefined;
+	}
+
+	/** "1.136.5-beta.2" and "1.136.5" are the same release. @param {string} v */
+	const baseVersion = (v) => v.split(/[-+]/)[0];
+
+	/**
+	 * Why ER pauses an extension's fixes by itself, or null when it does not.
+	 * @param {string} ext
+	 * @returns {string | null}
+	 */
+	function pausedReason(ext) {
+		const info = EXTENSIONS[ext];
+		if (!info?.tested) return null;
+		const v = installedVersion(ext);
+		if (!v || baseVersion(v) === baseVersion(info.tested)) return null;
+		return `${info.label} updated to ${v}; ER's fixes were tested with ${info.tested}`;
+	}
+
+	/**
+	 * Whether a fix should act right now: the player's forced choice, else ER's own call.
+	 * @param {{ id: string, ext: string }} fix
+	 */
+	const active = (fix) => {
+		const f = forced(fix);
+		if (f !== "auto") return f === "on";
+		return !pausedReason(fix.ext);
+	};
 
 	/** @type {ChartEntry[]} */
 	const chart = [];
+
+	/** The fix being set up, so hooks it adds can be switched off with it. @type {{ id: string, ext: string } | null} */
+	let currentFix = null;
 
 	/**
 	 * Records the outcome of one fix.
@@ -44,6 +142,11 @@
 	 * @param {() => boolean | string} treat Returns false when nothing needed doing, a string to add detail.
 	 */
 	function treat(fix, treat) {
+		if (forced(fix) === "off") {
+			note(fix, "off");
+			return;
+		}
+		currentFix = fix;
 		try {
 			const res = treat();
 			if (res === false) note(fix, "healthy");
@@ -51,6 +154,8 @@
 		} catch (e) {
 			note(fix, "failed", String((e && e.message) || e));
 			console.warn(`[ER] ${fix.id} failed:`, e);
+		} finally {
+			currentFix = null;
 		}
 	}
 
@@ -126,7 +231,9 @@
 	 */
 	function hook(name, priority, hook) {
 		if (!sdk || typeof w[name] !== "function") return false;
-		sdk.hookFunction(name, priority, hook);
+		const fix = currentFix;
+		// Every call checks the player's switches and the auto-pause, so turning a fix off acts at once.
+		sdk.hookFunction(name, priority, fix ? (/** @type {any[]} */ args, /** @type {(a: any[]) => any} */ next) => (active(fix) ? hook(args, next) : next(args)) : hook);
 		return true;
 	}
 
@@ -137,6 +244,7 @@
 		treat(
 			{
 				id: "room-space",
+				ext: "game",
 				title: "ChatRoomSpace / ChatRoomGame",
 				why: "R134 removed them; the room's space and game now live in ChatRoomData and the lobby settings.",
 				patients: ["ADCS", "WCE", "LSCG", "MBS", "BCT", "EBC", "MPA", "Themed", "ABCL", "CATS", "AFC", "FCM", "GGC", "Echo", "NotifyPlus", "Responsive (Legacy)", "SlimeBeep"],
@@ -162,6 +270,7 @@
 		treat(
 			{
 				id: "info-sheet",
+				ext: "game",
 				title: "InformationSheetSecondScreen",
 				why: "R134 rebuilt the profile sheet without its second page; add-ons that hook that page stopped loading.",
 				patients: ["ULTRAbc", "AFC", "FCM"],
@@ -175,6 +284,7 @@
 		treat(
 			{
 				id: "online-profile",
+				ext: "WCE",
 				title: "OnlineProfileMode / OnlineProfileText*",
 				why: "R134 moved the profile text into the OnlineProfile object.",
 				patients: ["WCE"],
@@ -196,6 +306,7 @@
 		treat(
 			{
 				id: "room-admin",
+				ext: "game",
 				title: "ChatAdminVisibilityMode* / ChatAdminAccessMode* / ChatBlockItem*",
 				why: "R134 rebuilt the room settings screen; these lists and indexes are gone.",
 				patients: ["BC+", "KikiLink", "BCX"],
@@ -221,6 +332,7 @@
 		treat(
 			{
 				id: "controller",
+				ext: "game",
 				title: "Controller* (gamepad support)",
 				why: "R134 removed gamepad support; add-ons that still register gamepad areas crashed while drawing.",
 				patients: ["BCT", "Themed", "ULTRAbc", "EBCH", "MoonCEBC"],
@@ -241,6 +353,7 @@
 		treat(
 			{
 				id: "infiltration",
+				ext: "ULTRAbc",
 				title: "InfiltrationMission / InfiltrationTarget / InfiltrationDifficulty",
 				why: "R134 merged the Pandora mission into one InfiltrationMissionState object.",
 				patients: ["ULTRAbc"],
@@ -270,6 +383,7 @@
 		treat(
 			{
 				id: "helpers",
+				ext: "game",
 				title: "CommonConvertArrayToString / AssetParseDefaultColor / KidnapReturnFunction",
 				why: "Small helpers R134 removed.",
 				patients: ["any"],
@@ -296,6 +410,7 @@
 		treat(
 			{
 				id: "modular-options",
+				ext: "game",
 				title: "Modular items only saved their first option",
 				why: "R134 beta bug (game MR !6947, not merged yet): a modular item's other modules reset to their first option, e.g. Bar Stool decal, Hypnotic Visor, Echo items.",
 				patients: ["everyone"],
@@ -338,6 +453,7 @@
 		treat(
 			{
 				id: "fetch-request",
+				ext: "Echo",
 				title: "Add-on pictures failed to load (CommonFetch with a Request and options)",
 				why: "R134's image loader calls CommonFetch(url, {headers}); add-ons that redirect pictures turn the url into a Request, and R134's CommonFetch refuses a Request together with options, so every redirected picture failed (Echo's hair, eyes, sleeves...).",
 				patients: ["Echo", "any add-on that redirects game files"],
@@ -359,6 +475,7 @@
 		treat(
 			{
 				id: "ubc-info-sheet",
+				ext: "ULTRAbc",
 				title: "ULTRAbc drew its old profile sheet over the new one",
 				why: "R134 rebuilt the profile sheet as page elements; ULTRAbc still draws its own canvas copy of the old sheet on top, so the profile shows twice.",
 				patients: ["ULTRAbc"],
@@ -404,6 +521,7 @@
 		treat(
 			{
 				id: "baseline-options",
+				ext: "Echo",
 				title: "Items with options in their baseline could not change options",
 				why: "R134 merges a new option into the item keeping the old value; when an add-on puts its options in BaselineProperty (e.g. Echo's 标志纹饰), the old options always won.",
 				patients: ["Echo", "any add-on item with BaselineProperty.TypeRecord"],
@@ -432,6 +550,7 @@
 		treat(
 			{
 				id: "default-color",
+				ext: "Echo",
 				title: "Add-on items lost their default colours",
 				why: "R134 reads default colours only from each layer's Color; the item-level DefaultColor add-ons use is ignored, so their items come out uncoloured and some (e.g. Echo's 淫纹) crash while drawing.",
 				patients: ["Echo", "any add-on with its own items"],
@@ -470,6 +589,7 @@
 		treat(
 			{
 				id: "arousal-active",
+				ext: "WCE",
 				title: "PreferenceArousalIsActive() without a character",
 				why: "R134 made it take a character; old calls with none crashed.",
 				patients: ["WCE"],
@@ -483,6 +603,7 @@
 		treat(
 			{
 				id: "item-header",
+				ext: "game",
 				title: "ExtendedItemDrawHeader(X, Y, Item)",
 				why: "R134 moved Item to the first argument and dropped the DialogFocusItem defaults.",
 				patients: ["any"],
@@ -506,6 +627,7 @@
 		treat(
 			{
 				id: "debounce",
+				ext: "game",
 				title: "CommonDebounce(func) / CommonThrottle(func)",
 				why: "R134 changed them to (interval, func) returning fn(...args); old callers passed only func and gave the interval on each call.",
 				patients: ["any"],
@@ -530,23 +652,214 @@
 		);
 	}
 
-	// ---- The chart: /er in a chat room ----
+	// ---- The panel: Preferences > Extensions > ER, or /er in a chat room ----
 
-	/** @param {string} s */
-	const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+	/**
+	 * ER's own call on a fix, shown next to its switch.
+	 * @param {ChartEntry} c
+	 * @returns {{ state: "running" | "paused" | "idle" | "off" | "failed", text: string }}
+	 */
+	function verdict(c) {
+		if (c.status === "failed") return { state: "failed", text: `could not apply: ${c.detail ?? "error"}` };
+		if (c.status === "off") return { state: "off", text: "switched off when the game loaded; reload after turning it back on" };
+		if (c.status === "healthy") return { state: "idle", text: "not needed: this game version has what the add-ons use" };
+		const f = forced(c);
+		const paused = pausedReason(c.ext);
+		if (f === "off") return { state: "off", text: "forced off" };
+		if (paused && f !== "on") return { state: "paused", text: `paused by ER: ${paused}` };
+		if (paused) return { state: "running", text: `forced on (${paused})` };
+		return { state: "running", text: `should run: ${c.detail ?? "needed on this game version"}` };
+	}
 
-	function chartHtml() {
-		const treated = chart.filter((c) => c.status === "treated");
-		const failed = chart.filter((c) => c.status === "failed");
-		const rows = (/** @type {ChartEntry[]} */ list, /** @type {string} */ mark) =>
-			list.map((c) => `<div style="margin:2px 0"><b>${mark} ${esc(c.title)}</b>${c.detail ? ` <i>(${esc(c.detail)})</i>` : ""}<br><span style="opacity:.8">${esc(c.why)}</span><br><span style="opacity:.7">Patients: ${esc(c.patients.join(", "))}</span></div>`).join("");
-		return (
-			`<div style="border-left:4px solid #e02424;padding:4px 8px;background:rgba(224,36,36,.08)">` +
-			`<b style="color:#e02424">✚ ER - Extension Repairer ${VERSION}</b> <span style="opacity:.7">on ${esc(game(() => GameVersion) ?? "?")}</span><br>` +
-			(treated.length ? `${treated.length} treatment(s) running:` + rows(treated, "🩹") : "No treatment needed: the game has everything your add-ons use.") +
-			(failed.length ? `<br>${failed.length} could not be applied:` + rows(failed, "⚠") : "") +
-			`<br><span style="opacity:.7">${chart.filter((c) => c.status === "healthy").length} check(s) healthy. Source: <a href="${REPO}" target="_blank" rel="noopener">${REPO.replace("https://", "")}</a></span></div>`
+	const PANEL_ID = "er-panel";
+
+	const CSS = `
+#er-panel { position: fixed; top: 4vh; left: 50%; transform: translateX(-50%); width: min(760px, 94vw); max-height: 92vh; z-index: 100000;
+	display: flex; flex-direction: column; background: #fff; color: #1d1a1a; border-radius: 14px; overflow: hidden;
+	box-shadow: 0 12px 48px rgba(0,0,0,.45); font: 15px/1.45 system-ui, "Segoe UI", sans-serif; text-align: left; }
+#er-panel * { box-sizing: border-box; }
+#er-panel .er-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #d81e1e; color: #fff; }
+#er-panel .er-cross { width: 34px; height: 34px; flex: none; position: relative; background: #fff; border-radius: 8px; }
+#er-panel .er-cross::before, #er-panel .er-cross::after { content: ""; position: absolute; background: #d81e1e; border-radius: 2px; }
+#er-panel .er-cross::before { left: 13px; top: 6px; width: 8px; height: 22px; }
+#er-panel .er-cross::after { left: 6px; top: 13px; width: 22px; height: 8px; }
+#er-panel .er-title { font-weight: 700; font-size: 17px; }
+#er-panel .er-sub { opacity: .9; font-size: 13px; }
+#er-panel .er-close { margin-left: auto; background: rgba(255,255,255,.18); color: #fff; border: 0; border-radius: 8px; width: 34px; height: 34px; font-size: 18px; cursor: pointer; }
+#er-panel .er-body { overflow: auto; padding: 10px 16px 4px; }
+#er-panel .er-help { font-size: 13px; color: #5d5555; margin: 2px 0 8px; }
+#er-panel .er-ext { border: 1px solid #ead9d9; border-radius: 10px; margin: 10px 0; overflow: hidden; }
+#er-panel .er-ext-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #fbf3f3; }
+#er-panel .er-ext-name { font-weight: 700; }
+#er-panel .er-ext-ver { font-size: 12px; color: #6b6464; }
+#er-panel .er-fix { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 10px; border-top: 1px solid #f3e6e6; }
+#er-panel .er-fix-title { font-weight: 600; }
+#er-panel .er-why { grid-column: 1 / -1; font-size: 12px; color: #6b6464; }
+#er-panel .er-verdict { grid-column: 1 / -1; font-size: 13px; }
+#er-panel .er-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; margin-right: 6px; color: #fff; }
+#er-panel .er-running { background: #1f9d55; }
+#er-panel .er-paused { background: #b45309; }
+#er-panel .er-idle { background: #6b6464; }
+#er-panel .er-off { background: #3f3939; }
+#er-panel .er-failed { background: #d81e1e; }
+#er-panel .er-seg { display: inline-flex; border: 1px solid #d9c4c4; border-radius: 8px; overflow: hidden; margin-left: auto; flex: none; align-self: start; }
+#er-panel .er-seg button { border: 0; background: #fff; color: #1d1a1a; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+#er-panel .er-seg button + button { border-left: 1px solid #d9c4c4; }
+#er-panel .er-seg button[aria-pressed="true"] { background: #d81e1e; color: #fff; }
+#er-panel .er-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid #ead9d9; font-size: 13px; color: #5d5555; }
+#er-panel .er-foot button { margin-left: auto; background: #d81e1e; color: #fff; border: 0; border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+#er-panel a { color: #d81e1e; }
+`;
+
+	/**
+	 * Builds an element with text only (never HTML), so names and messages cannot inject markup.
+	 * @param {string} tag
+	 * @param {string} [cls]
+	 * @param {string} [text]
+	 */
+	function el(tag, cls, text) {
+		const e = document.createElement(tag);
+		if (cls) e.className = cls;
+		if (text != null) e.textContent = text;
+		return e;
+	}
+
+	/**
+	 * The Auto / On / Off switch for one key.
+	 * @param {string} key An extension id or a fix id.
+	 * @param {string} label What the switch is for, for screen readers.
+	 */
+	function modeSwitch(key, label) {
+		const seg = el("span", "er-seg");
+		seg.setAttribute("role", "group");
+		seg.setAttribute("aria-label", label);
+		for (const m of /** @type {Mode[]} */ (["auto", "on", "off"])) {
+			const b = /** @type {HTMLButtonElement} */ (el("button", undefined, m === "auto" ? "Auto" : m === "on" ? "On" : "Off"));
+			b.type = "button";
+			b.setAttribute("aria-pressed", String(modeOf(key) === m));
+			b.addEventListener("click", () => {
+				if (m === "auto") delete settings.mode[key];
+				else settings.mode[key] = m;
+				saveSettings();
+				renderPanel();
+			});
+			seg.append(b);
+		}
+		return seg;
+	}
+
+	/** Draws (or redraws) the panel's contents. */
+	function renderPanel() {
+		const panel = document.getElementById(PANEL_ID);
+		if (!panel) return;
+		const body = /** @type {HTMLElement} */ (panel.querySelector(".er-body"));
+		const scroll = body.scrollTop;
+		body.replaceChildren();
+		body.append(
+			el(
+				"p",
+				"er-help",
+				"Every switch starts on Auto: ER runs a fix only when the game needs it, and pauses an extension's fixes by itself when that extension updates past the version ER was tested with. Use On or Off to force a choice.",
+			),
 		);
+		for (const [ext, info] of Object.entries(EXTENSIONS)) {
+			const fixes = chart.filter((c) => c.ext === ext);
+			if (!fixes.length) continue;
+			const box = el("section", "er-ext");
+			const head = el("div", "er-ext-head");
+			const names = el("div");
+			names.append(el("div", "er-ext-name", info.label));
+			if (info.mods) {
+				const v = installedVersion(ext);
+				const paused = pausedReason(ext);
+				names.append(
+					el("div", "er-ext-ver", v ? `installed ${v} · tested ${info.tested}${paused ? " · ER pauses these fixes until it is tested again" : ""}` : `not loaded · tested ${info.tested}`),
+				);
+			}
+			head.append(names, modeSwitch(ext, `${info.label}: all fixes`));
+			box.append(head);
+			for (const c of fixes) {
+				const row = el("div", "er-fix");
+				row.append(el("div", "er-fix-title", c.title), modeSwitch(c.id, c.title));
+				const v = verdict(c);
+				const verdictLine = el("div", "er-verdict");
+				verdictLine.append(el("span", `er-pill er-${v.state}`, v.state === "idle" ? "not needed" : v.state), document.createTextNode(`ER: ${v.text}`));
+				row.append(verdictLine, el("div", "er-why", `${c.why} Helps: ${c.patients.join(", ")}.`));
+				box.append(row);
+			}
+			body.append(box);
+		}
+		body.scrollTop = scroll;
+	}
+
+	function closePanel() {
+		document.getElementById(PANEL_ID)?.remove();
+		document.getElementById(`${PANEL_ID}-style`)?.remove();
+	}
+
+	/** Opens the panel. @param {() => void} [onClose] */
+	function openPanel(onClose) {
+		closePanel();
+		const style = el("style");
+		style.id = `${PANEL_ID}-style`;
+		style.textContent = CSS;
+		document.head.append(style);
+		const panel = el("div");
+		panel.id = PANEL_ID;
+		panel.setAttribute("role", "dialog");
+		panel.setAttribute("aria-label", "ER - Extension Repairer");
+		const head = el("div", "er-head");
+		const titles = el("div");
+		titles.append(el("div", "er-title", `ER - Extension Repairer ${VERSION}`), el("div", "er-sub", `Emergency room for add-ons · game ${game(() => GameVersion) ?? "?"}`));
+		const close = /** @type {HTMLButtonElement} */ (el("button", "er-close", "✕"));
+		close.type = "button";
+		close.setAttribute("aria-label", "Close");
+		close.addEventListener("click", () => {
+			closePanel();
+			onClose?.();
+		});
+		head.append(el("div", "er-cross"), titles, close);
+		const body = el("div", "er-body");
+		const foot = el("div", "er-foot");
+		const link = el("a", undefined, "Source and reports");
+		link.setAttribute("href", REPO);
+		link.setAttribute("target", "_blank");
+		link.setAttribute("rel", "noopener");
+		const reload = /** @type {HTMLButtonElement} */ (el("button", undefined, "Reload to apply"));
+		reload.type = "button";
+		reload.addEventListener("click", () => location.reload());
+		foot.append(el("span", undefined, "Most switches act at once; fixes that start with the game need a reload."), link, reload);
+		panel.append(head, body, foot);
+		// Keys typed in the panel must not reach the game.
+		panel.addEventListener("keydown", (e) => e.stopPropagation());
+		document.body.append(panel);
+		renderPanel();
+	}
+
+	/** A red cross for the Preferences > Extensions button. */
+	const ICON = `data:image/svg+xml,${encodeURIComponent(
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#d81e1e"/><rect x="26" y="12" width="12" height="40" rx="3" fill="#fff"/><rect x="12" y="26" width="40" height="12" rx="3" fill="#fff"/></svg>',
+	)}`;
+
+	/** Adds ER to Preferences > Extensions. @returns {boolean} Whether the game was ready for it. */
+	function registerSettings() {
+		const registry = game(() => PreferenceExtensionsSettings);
+		if (typeof w.PreferenceRegisterExtensionSetting !== "function" || !registry || typeof registry !== "object") return false;
+		if (registry.ER) return true;
+		w.PreferenceRegisterExtensionSetting({
+			Identifier: "ER",
+			ButtonText: "ER - Extension Repairer",
+			Image: ICON,
+			load: () => openPanel(() => game(() => PreferenceSubscreenExtensionsClear())),
+			run: () => {},
+			click: () => {},
+			exit: () => {
+				closePanel();
+				return true;
+			},
+			unload: () => closePanel(),
+		});
+		return true;
 	}
 
 	function registerCommand() {
@@ -554,14 +867,8 @@
 		w.CommandCombine([
 			{
 				Tag: "er",
-				Description: ": ER - Extension Repairer: show which add-on fixes are running",
-				Action: () => {
-					if (typeof w.ChatRoomSendLocal === "function") {
-						const div = document.createElement("div");
-						div.innerHTML = chartHtml();
-						w.ChatRoomSendLocal(div);
-					}
-				},
+				Description: ": ER - Extension Repairer: open the fixes panel",
+				Action: () => openPanel(),
 			},
 		]);
 	}
@@ -588,11 +895,14 @@
 				clearInterval(commandTimer);
 			}
 		}, 500);
+		if (!registerSettings()) {
+			const t = setInterval(() => registerSettings() && clearInterval(t), 500);
+		}
 		if (!sdkReady()) {
 			const t = setInterval(() => sdkReady() && clearInterval(t), 100);
 		}
 		const treated = () => chart.filter((c) => c.status === "treated").map((c) => c.id);
-		console.info(`%c✚ ER ${VERSION}%c treating: ${treated().join(", ") || "nothing"} (type /er in a chat room)`, "color:#e02424;font-weight:bold", "");
+		console.info(`%c✚ ER ${VERSION}%c treating: ${treated().join(", ") || "nothing"} (settings: /er or Preferences > Extensions)`, "color:#e02424;font-weight:bold", "");
 	}
 
 	w.ER = {
@@ -602,6 +912,8 @@
 		chart: () => chart.map((c) => ({ ...c })),
 		/** Names ER put back on window. */
 		standIns: () => [...standIns],
+		/** Opens the fixes panel. */
+		open: () => openPanel(),
 	};
 
 	if (ready()) start();

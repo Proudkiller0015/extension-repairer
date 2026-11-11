@@ -7,7 +7,7 @@ When a game update removes or changes something an add-on still uses, that add-o
 - **Self-updating:** install once. Every game load fetches the newest fixes.
 - **Safe on any version:** every fix checks the game first and only acts when something is actually missing or broken. On a game version with nothing to fix, ER does nothing.
 - **Never talks to the server** and sends nothing anywhere.
-- Type **`/er`** in a chat room to see the chart: which fixes are running, why, and for which add-ons.
+- Type **`/er`** in a chat room (or open Preferences > Extensions) to see every fix, what ER thinks of it, and switch it.
 
 ## Install
 
@@ -17,6 +17,12 @@ When a game update removes or changes something an add-on still uses, that add-o
 The userscript loads ER before your other add-ons. Some add-ons (for example ULTRAbc on R134) check the game while they start, so ER has to be there first to help them.
 
 Install page: https://proudkiller0015.github.io/extension-repairer/
+
+## Settings
+
+Open them with **`/er`** in a chat room, or **Preferences > Extensions > ER - Extension Repairer**.
+
+Every extension and every fix has a switch: **Auto** (the default), **On** or **Off**. On Auto, ER decides: a fix runs only when the game needs it. Each extension's fixes are tested with one version of that extension (Echo 1.136.5, ULTRAbc 6.4, WCE 6.3.20). When that extension updates, ER pauses its fixes by itself, because the author may have fixed it, until ER is tested again. Next to each switch ER says what it thinks: running and why, not needed, paused (and why), or off. Use **On** to keep a paused fix running, or **Off** to stop one. Most switches act at once; fixes that start with the game need a reload.
 
 ## What it treats (R134 beta)
 

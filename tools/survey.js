@@ -120,6 +120,18 @@ async function runOne(browser, addon, dist) {
 			ChatRoomMessage({ Sender: 2002, Content: 'hello', Type: 'Chat', Dictionary: [] });
 			ChatRoomMessage({ Sender: 2002, Content: 'Beep', Type: 'Emote', Dictionary: [] });
 		});
+		if (process.env.ER_PANEL) {
+			const r = await page.evaluate(() => {
+				const out = { hasCmd: Commands.some((c) => c.Tag === 'er'), hasPref: !!PreferenceExtensionsSettings?.ER, pause: ER.chart().filter((c) => c.ext === 'Echo').map((c) => c.status) };
+				try { CommandParse('/er'); } catch (e) { out.err = e.message; }
+				out.panel = !!document.getElementById('er-panel');
+				return out;
+			});
+			push('panel', JSON.stringify(r));
+			await sleep(500);
+			await page.screenshot({ path: path.join(outDir, `${build}-${addon.id}-panel.png`) });
+			await page.evaluate(() => document.getElementById('er-panel')?.remove());
+		}
 		await step('dialog', () => { ChatRoomFocusCharacter?.(Player) ?? DialogLoad?.(Player); });
 		await step('wardrobe', () => { DialogLeave?.(); CharacterAppearanceLoadCharacter?.(Player); });
 		result.globals = (await page.evaluate(() => Object.keys(window))).filter((k) => !before.has(k)).slice(0, 30);
