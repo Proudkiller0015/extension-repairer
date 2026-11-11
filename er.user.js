@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ER - Extension Repairer
 // @namespace    https://github.com/Proudkiller0015/extension-repairer
-// @version      1.0.1
+// @version      1.0.2
 // @description  An emergency room for Bondage Club add-ons: keeps add-ons working when a game update breaks them. Always runs the newest fixes.
 // @icon         https://raw.githubusercontent.com/Proudkiller0015/extension-repairer/main/icon-64.png
 // @homepageURL  https://github.com/Proudkiller0015/extension-repairer
@@ -22,14 +22,14 @@
 /*
  * The ER loader. It never needs updating: on every game load it adds the newest ER, so new fixes reach
  * everybody the next time they reload. It runs at document-start so ER is in place before other add-ons load.
- * ER comes from jsDelivr (a copy of the GitHub repo); if that fails, from GitHub Pages.
+ * ER comes from GitHub Pages; if that fails, from jsDelivr (a copy of the GitHub repo).
  */
 (function () {
 	"use strict";
 	const minute = Math.floor(Date.now() / 60000);
 	const sources = [
-		`https://cdn.jsdelivr.net/gh/Proudkiller0015/extension-repairer@main/er.js?v=${minute}`,
 		`https://proudkiller0015.github.io/extension-repairer/er.js?v=${minute}`,
+		`https://cdn.jsdelivr.net/gh/Proudkiller0015/extension-repairer@main/er.js?v=${minute}`,
 	];
 	const add = (i = 0) => {
 		const parent = document.head || document.documentElement;

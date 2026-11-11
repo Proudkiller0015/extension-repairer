@@ -13,12 +13,24 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.4.1";
+	const VERSION = "1.5.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
 	const w = /** @type {any} */ (window);
-	if (w.ER && w.ER.version) return;
+	// One ER per page; a newer copy that an older one handed over to (see below) may take its place.
+	if (w.ER && w.ER.version && w.ER.handoverTo !== VERSION) return;
+
+	/** Where the newest ER is published; GitHub Pages updates within a minute of a push. */
+	const NEWEST = "https://proudkiller0015.github.io/extension-repairer/er.js";
+
+	/** "1.10.0" > "1.9.2". @param {string} a @param {string} b */
+	const newer = (a, b) => {
+		const pa = a.split(".").map(Number);
+		const pb = b.split(".").map(Number);
+		for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+		return false;
+	};
 
 	/**
 	 * One line on the chart per fix.
@@ -924,13 +936,50 @@
 		open: () => openPanel(),
 	};
 
-	if (ready()) start();
-	else {
-		const t = setInterval(() => {
-			if (ready()) {
-				clearInterval(t);
-				start();
+	/**
+	 * CDNs can keep handing out an old copy for hours. Before starting, ask GitHub Pages for its version; if it is
+	 * newer, load that copy instead of this one. Gives up after 3 seconds so ER still starts offline.
+	 * @returns {Promise<boolean>} Whether this copy should start.
+	 */
+	async function shouldStart() {
+		if (w.ER?.handoverTo === VERSION) return true;
+		try {
+			const ctrl = new AbortController();
+			const timer = setTimeout(() => ctrl.abort(), 3000);
+			const text = await (await fetch(`${NEWEST}?v=${Date.now()}`, { cache: "no-store", signal: ctrl.signal })).text();
+			clearTimeout(timer);
+			const latest = /const VERSION = "(\d+\.\d+\.\d+)"/.exec(text)?.[1];
+			if (latest && newer(latest, VERSION)) {
+				w.ER.handoverTo = latest;
+				const script = document.createElement("script");
+				script.src = `${NEWEST}?v=${latest}`;
+				script.crossOrigin = "anonymous";
+				// If the newer copy cannot load after all, this one starts.
+				script.addEventListener("error", () => go());
+				(document.head || document.documentElement).append(script);
+				console.info(`[ER] ${VERSION} is outdated; loading ${latest}`);
+				return false;
 			}
-		}, 50);
+		} catch {
+			// Offline or blocked: this copy is fine.
+		}
+		return true;
 	}
+
+	let started = false;
+	function go() {
+		if (started) return;
+		started = true;
+		if (ready()) start();
+		else {
+			const t = setInterval(() => {
+				if (ready()) {
+					clearInterval(t);
+					start();
+				}
+			}, 50);
+		}
+	}
+
+	shouldStart().then((ok) => ok && go());
 })();
