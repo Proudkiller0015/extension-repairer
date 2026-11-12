@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Collect the published files
-        run: mkdir site && cp er.js er.user.js check.js index.html README.md LICENSE .nojekyll icon-64.png icon-128.png logo-512.png site/
+        run: mkdir site && cp er.js er.user.js index.html README.md LICENSE .nojekyll icon-64.png icon-128.png logo-512.png site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
