@@ -73,6 +73,15 @@
 	</div>
 
 	<div class="card">
+		<h2 style="margin-top:0">No extension? Use a bookmark</h2>
+		<p>Drag this button to your bookmarks bar: <a class="btn" title="Drag me to your bookmarks bar" onclick="alert('Drag this button to your bookmarks bar, then click it on the Bondage Club page.'); return false;" href="javascript:(()=>{if(window.ER)return alert('ER '+ER.version+' is already loaded');const s=document.createElement('script');s.src='https://proudkiller0015.github.io/extension-repairer/er.js?v='+Date.now();s.crossOrigin='anonymous';document.head.appendChild(s);})();">ER</a></p>
+		<p>On a phone, or if dragging doesn't work: bookmark any page, edit the bookmark, name it <code>ER</code> and paste this as its address:</p>
+		<p><input readonly onclick="this.select()" style="width:100%; font: 13px monospace; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink)" value="javascript:(()=>{if(window.ER)return alert('ER '+ER.version+' is already loaded');const s=document.createElement('script');s.src='https://proudkiller0015.github.io/extension-repairer/er.js?v='+Date.now();s.crossOrigin='anonymous';document.head.appendChild(s);})();"></p>
+		<p>Open Bondage Club and click the bookmark <b>before you log in</b> (on a phone: type <code>ER</code> in the address bar and pick the bookmark). It always loads the newest ER.</p>
+		<p class="muted">A bookmark can only run after the page has loaded, so click ER before your other add-on bookmarks. Add-ons that start by themselves (FUSAM, userscripts) start before you can click: most fixes still apply, but on the R134 beta the add-ons that crash while starting (ADCS, ULTRAbc, WCE) need ER loaded first, so for those use the userscript.</p>
+	</div>
+
+	<div class="card">
 		<h2 style="margin-top:0">Currently treating (R134 beta)</h2>
 		<table>
 			<tr><td>ADCS</td><td>Crashed in chat rooms (<code>ChatRoomSpace</code> removed)</td></tr>

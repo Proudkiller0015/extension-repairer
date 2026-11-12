@@ -18,6 +18,14 @@ When a game update removes or changes something an add-on still uses, that add-o
 
 The userscript loads ER before your other add-ons. Some add-ons (for example ULTRAbc on R134) check the game while they start, so ER has to be there first to help them.
 
+**Bookmark (no extension needed):** on the [install page](https://proudkiller0015.github.io/extension-repairer/), drag the **ER** button to your bookmarks bar. Or bookmark any page, edit the bookmark, name it `ER` and paste this as its address:
+
+```
+javascript:(()=>{if(window.ER)return alert('ER '+ER.version+' is already loaded');const s=document.createElement('script');s.src='https://proudkiller0015.github.io/extension-repairer/er.js?v='+Date.now();s.crossOrigin='anonymous';document.head.appendChild(s);})();
+```
+
+Open Bondage Club and click the bookmark before you log in (on a phone: type `ER` in the address bar and pick the bookmark). It always loads the newest ER. A bookmark can only run after the page has loaded, so click ER before your other add-on bookmarks. Add-ons that start by themselves (FUSAM, userscripts) start before you can click: most fixes still apply, but on the R134 beta the add-ons that crash while starting (ADCS, ULTRAbc, WCE) need ER loaded first, so for those use the userscript.
+
 Install page: https://proudkiller0015.github.io/extension-repairer/
 
 ## Settings
