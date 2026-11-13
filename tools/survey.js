@@ -8,7 +8,7 @@ const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
 
 const BUILDS = {
 	live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
-	beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/',
+	beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/',
 };
 const MANIFEST = 'https://sidiousious.gitlab.io/bc-addon-loader/manifest.json';
 const MODSDK = 'https://cdn.jsdelivr.net/npm/bondage-club-mod-sdk@1.2.0/dist/bcmodsdk.js';

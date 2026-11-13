@@ -1,6 +1,6 @@
 // Loads one Echo picture through the beta's image cache and reports what happened.
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
-const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/' };
+const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/' };
 const URL_ = 'https://cdn.jsdelivr.net/gh/SugarChain-Studio/echo-clothing-ext@091d2f4e1dfc8df571a396a6304746dfafa68dbf/resources/Assets/Female3DCG/新后发_Luzi/单马尾1b_左侧.png';
 (async () => {
 	const browser = await puppeteer.launch({ executablePath: process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new' });

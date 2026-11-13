@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
-const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/' };
+const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/' };
 const [build, mode] = process.argv.slice(2);
 (async () => {
 	const browser = await puppeteer.launch({ executablePath: process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new' });

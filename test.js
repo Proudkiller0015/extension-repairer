@@ -5,7 +5,7 @@ const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
 
 const BUILDS = {
 	live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
-	beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/',
+	beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/',
 };
 const MODSDK = 'https://cdn.jsdelivr.net/npm/bondage-club-mod-sdk@1.2.0/dist/bcmodsdk.js';
 let failed = 0;
@@ -54,7 +54,9 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.beta);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'chat-width', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			// The game shipped these in R134 Beta 2, so ER's copies stand down.
+			for (const id of ['chat-width', 'modular-options']) check(`beta: ${id} retired (the game has it)`, chart[id] === 'healthy', chart[id]);
 			const space = await page.evaluate(() => {
 				ChatRoomData = { Space: 'M', Game: 'LARP' };
 				const inRoom = [ChatRoomSpace, ChatRoomGame];

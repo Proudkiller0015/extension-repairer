@@ -2,7 +2,7 @@
 // and functions whose parameter lists changed. usage: node tools/diff-globals.js <out.json>
 const fs = require('fs');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
-const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/' };
+const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/' };
 
 async function scan(browser, base) {
 	const page = await browser.newPage();

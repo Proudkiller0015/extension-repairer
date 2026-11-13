@@ -44,8 +44,8 @@ Every extension and every fix has a switch: **Auto** (the default), **On** or **
 | `ChatAdmin*Mode*` / `ChatBlockItem*` | The room settings screen was rebuilt | BC+, KikiLink, BCX |
 | `Controller*` | Gamepad support was removed | BCT, Themed, ULTRAbc, EBCH, MoonCEBC |
 | `InfiltrationMission` / `Target` / `Difficulty` | Merged into `InfiltrationMissionState` | ULTRAbc (Pandora mission tools) |
-| Modular items only saved their first option | Game bug in the R134 beta (fix waiting as game MR !6947) | Everyone: Bar Stool decal, Hypnotic Visor, Echo items |
-| The chat squeezed the room or map off the screen | R134 lays the chat out next to the room in a flexible row without a minimum width, so one wide message or add-on element widens the chat until the room view is gone (normal and map rooms) | Everyone |
+| Modular items only saved their first option | Game bug in R134 Beta 1; the game fixed it in Beta 2, where ER stands down | Everyone: Bar Stool decal, Hypnotic Visor, Echo items |
+| The chat squeezed the room or map off the screen | R134 lays the chat out next to the room in a flexible row without a minimum width, so one wide message or add-on element widens the chat until the room view is gone (normal and map rooms). The game fixed it in Beta 2, where ER stands down | Everyone |
 | BCX curses on crafted items looped | Since R133 the server echoes crafted items with only part of their craft data, so BCX curses see a change and "undo all changes" over and over. ER keeps the full craft on the player's own items | BCX |
 | ULTRAbc drew its old profile sheet over the new one | R134 rebuilt the profile sheet as page elements; ULTRAbc still draws its canvas copy on top. While ULTRAbc runs, ER sends its old sheet to a hidden canvas | ULTRAbc |
 | Add-on pictures never loaded | R134's image loader passes options to `CommonFetch`, which now refuses them with a `Request`; add-ons that redirect pictures (Echo) lost hair, eyes, sleeves and more | Echo, any add-on that redirects game files |

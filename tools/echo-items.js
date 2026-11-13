@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
-const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/1970510968540/' };
+const BUILDS = { live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/', beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/' };
 const [build, mode, early] = process.argv.slice(2);
 const ECHO = ['https://sugarchain-studio.github.io/echo-clothing-ext/bc-cloth.js', 'https://sugarchain-studio.github.io/echo-activity-ext/bc-activity.js'];
 const MODSDK = 'https://cdn.jsdelivr.net/npm/bondage-club-mod-sdk@1.2.0/dist/bcmodsdk.js';
