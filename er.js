@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.6.0";
+	const VERSION = "1.7.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -49,6 +49,7 @@
 		ULTRAbc: { label: "ULTRAbc", mods: ["ULTRAbc"], tested: "6.4" },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
 		BCX: { label: "BCX", mods: ["BCX"], tested: "1.1.23" },
+		LSCG: { label: "LSCG", mods: ["LSCG"], tested: "0.9.16" },
 	};
 
 	/** Where the player's choices are kept (per browser, read before login so fixes can start early). */
@@ -692,6 +693,39 @@
 					return res;
 				});
 				return "add-on items get their own default colours back";
+			},
+		);
+
+		treat(
+			{
+				id: "view-rebuild",
+				ext: "LSCG",
+				title: "Map buttons vanished",
+				why: "R134 rebuilds the open room view's buttons when you come back to the room; LSCG skips the game when the view is already open (R133 did nothing there), so the map's arrows and editor stayed gone in map rooms.",
+				patients: ["LSCG"],
+			},
+			() => {
+				if (release() < 134 || typeof w.ChatRoomActivateView !== "function" || typeof w.ChatRoomIsViewActive !== "function") return false;
+				// Above LSCG's hook (priority 1): rebuild the view afterwards if nobody let the game do it.
+				hook("ChatRoomActivateView", 1000, (args, next) => {
+					const view = game(() => ChatRoomViews)?.[args[0]];
+					if (typeof view?.Activate !== "function" || !w.ChatRoomIsViewActive(args[0])) return next(args);
+					const activate = view.Activate;
+					let rebuilt = false;
+					view.Activate = function (/** @type {any[]} */ ...a) {
+						rebuilt = true;
+						return activate.apply(this, a);
+					};
+					let res;
+					try {
+						res = next(args);
+					} finally {
+						view.Activate = activate;
+					}
+					if (!rebuilt) activate.call(view);
+					return res;
+				});
+				return "the open view rebuilds its buttons again";
 			},
 		);
 

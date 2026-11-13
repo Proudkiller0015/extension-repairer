@@ -54,7 +54,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.beta);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'chat-width', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'chat-width', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'modular-options', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
 			const space = await page.evaluate(() => {
 				ChatRoomData = { Space: 'M', Game: 'LARP' };
 				const inRoom = [ChatRoomSpace, ChatRoomGame];
@@ -106,6 +106,29 @@ const roundTrip = () => {
 				return { property: after?.Property, item: after?.Item, worn: InventoryGet(Player, 'ItemNeck')?.Asset?.Name ?? null, after: after ?? null, sent: bundle.find((b) => b.Group === 'ItemNeck')?.Craft ?? null, chart: ER.chart().find((c) => c.id === 'bcx-curse-loop') };
 			});
 			check('beta: BCX curse fix keeps the full craft when the server echoes a partial one', craft.property === 'Secure' && craft.item === 'LeatherCollar', craft);
+			// LSCG's hook skips the game when the view is already open; R134 rebuilds the view's buttons there.
+			const views = await page.evaluate(() => {
+				const map = ChatRoomViews.Map;
+				const activate = map.Activate;
+				let built = 0;
+				map.Activate = () => { built++; };
+				const before = ChatRoomActiveView;
+				ChatRoomActiveView = map;
+				const out = {};
+				ChatRoomActivateView('Map');
+				out.plain = built;
+				const lscg = bcModSdk.registerMod({ name: 'LSCGTest', fullName: 'LSCG-like test', version: '1.0.0' });
+				lscg.hookFunction('ChatRoomActivateView', 1, (args, next) => { if (ChatRoomActiveView != ChatRoomViews[args[0]]) next(args); });
+				built = 0;
+				ChatRoomActivateView('Map');
+				out.lscg = built;
+				lscg.unload();
+				map.Activate = activate;
+				ChatRoomActiveView = before;
+				return out;
+			});
+			check('beta: the open map view rebuilds once without LSCG', views.plain === 1, views);
+			check('beta: the open map view rebuilds once behind an LSCG-style hook', views.lscg === 1, views);
 			const sw = await page.evaluate(() => {
 				const out = {};
 				const call = () => { try { return typeof PreferenceArousalIsActive(); } catch (e) { return 'throws'; } };
