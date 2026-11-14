@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.8.0";
+	const VERSION = "1.8.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -369,37 +369,6 @@
 
 		treat(
 			{
-				id: "chat-width",
-				ext: "game",
-				title: "Long chat messages pushed the map off the screen",
-				why: "R134's map rooms put the chat next to the map in a flexible row; the chat has no minimum width, so one long word or link widens it until the map is squeezed to nothing.",
-				patients: ["everyone in map rooms"],
-			},
-			() => {
-				if (release() < 134) return false;
-				// Game MR !6950 adds this rule; once the game ships it, ER has nothing to do.
-				const gameHasIt = [...document.styleSheets].some((sheet) => {
-					try {
-						return [...sheet.cssRules].some((r) => r instanceof CSSStyleRule && r.selectorText === "#chat-room-div" && r.style.minWidth === "0px");
-					} catch {
-						return false;
-					}
-				});
-				if (gameHasIt) return false;
-				const style = document.createElement("style");
-				style.id = "er-chat-width";
-				style.textContent = [
-					"#chat-room-div { min-width: 0; }",
-					"#chat-room-content { flex-shrink: 0; }",
-					"#TextAreaChatLog { overflow-wrap: anywhere; }",
-				].join("\n");
-				(document.head || document.documentElement).append(style);
-				return "the chat keeps the width you set";
-			},
-		);
-
-		treat(
-			{
 				id: "infiltration",
 				ext: "ULTRAbc",
 				title: "InfiltrationMission / InfiltrationTarget / InfiltrationDifficulty",
@@ -455,49 +424,6 @@
 	// ---- Fixes that need ModSDK (argument adapters and the game bug fix) ----
 
 	function hookFixes() {
-		treat(
-			{
-				id: "modular-options",
-				ext: "game",
-				title: "Modular items only saved their first option",
-				why: "R134 beta bug (game MR !6947, not merged yet): a modular item's other modules reset to their first option, e.g. Bar Stool decal, Hypnotic Visor, Echo items.",
-				patients: ["everyone"],
-			},
-			() => {
-				const entry = game(() => PropertyData?.TypeRecord);
-				if (!entry || typeof entry._difference !== "function") return false;
-				const probe = entry._difference.call(entry, [{ a: 1, b: 2 }, { a: 1, b: 2 }]);
-				if (probe === undefined) return false;
-				/** @param {Record<string, unknown>[]} values */
-				const difference = function (values) {
-					const [head, ...tail] = values;
-					const ret = { ...head };
-					for (const obj of tail) {
-						for (const [k, v] of Object.entries(obj)) {
-							if (v !== undefined && ret[k] === v) delete ret[k];
-						}
-					}
-					return Object.values(ret).some((i) => i !== undefined) ? ret : undefined;
-				};
-				entry._difference = difference;
-				const PDE = game(() => PropertyDataEntry);
-				if (PDE && typeof PDE.differenceShallowObjects === "function") PDE.differenceShallowObjects = difference;
-				hook("ItemPropertiesDifference", 1000, (args) => {
-					const [propertyList, asset, output] = args;
-					const ret = output ?? CommonCloneDeep(propertyList[0]) ?? {};
-					for (const [propName, propValue] of Object.entries(ret)) {
-						if (propValue === undefined) continue;
-						const e = PropertyData[propName];
-						const propList = [propValue, ...propertyList.map((p) => (p === ret ? undefined : p[propName]))];
-						if (e) ret[propName] = e.difference(propList, { asset });
-						else if (propList.filter((i) => i === propValue).length >= 2) delete ret[propName];
-					}
-					return ret;
-				});
-				return "game fix applied until the game ships it";
-			},
-		);
-
 		treat(
 			{
 				id: "fetch-request",

@@ -56,7 +56,7 @@ const roundTrip = () => {
 			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
 			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
-			for (const id of ['chat-width', 'modular-options']) check(`beta: ${id} retired (the game has it)`, chart[id] === 'healthy', chart[id]);
+			for (const id of ['chat-width', 'modular-options']) check(`beta: ${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
 				ChatRoomData = { Space: 'M', Game: 'LARP' };
 				const inRoom = [ChatRoomSpace, ChatRoomGame];
