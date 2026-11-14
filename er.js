@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.7.1";
+	const VERSION = "1.8.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -34,7 +34,7 @@
 
 	/**
 	 * One line on the chart per fix.
-	 * @typedef {{ id: string, ext: string, title: string, why: string, patients: string[], status: "treated" | "healthy" | "failed" | "off", detail?: string }} ChartEntry
+	 * @typedef {{ id: string, ext: string, title: string, why: string, patients: string[], selfCheck?: boolean, status: "treated" | "healthy" | "failed" | "off", detail?: string }} ChartEntry
 	 */
 
 	/**
@@ -132,7 +132,9 @@
 	const active = (fix) => {
 		const f = forced(fix);
 		if (f !== "auto") return f === "on";
-		return !pausedReason(fix.ext);
+		// A fix that checks for the problem itself every time keeps running when its extension updates: if the update
+		// fixed the problem, the fix simply finds nothing to do.
+		return !!fix.selfCheck || !pausedReason(fix.ext);
 	};
 
 	/** @type {ChartEntry[]} */
@@ -499,6 +501,7 @@
 		treat(
 			{
 				id: "fetch-request",
+				selfCheck: true,
 				ext: "Echo",
 				title: "Add-on pictures failed to load (CommonFetch with a Request and options)",
 				why: "R134's image loader calls CommonFetch(url, {headers}); add-ons that redirect pictures turn the url into a Request, and R134's CommonFetch refuses a Request together with options, so every redirected picture failed (Echo's hair, eyes, sleeves...).",
@@ -632,6 +635,7 @@
 		treat(
 			{
 				id: "baseline-options",
+				selfCheck: true,
 				ext: "Echo",
 				title: "Items with options in their baseline could not change options",
 				why: "R134 merges a new option into the item keeping the old value; when an add-on puts its options in BaselineProperty (e.g. Echo's 标志纹饰), the old options always won.",
@@ -661,6 +665,7 @@
 		treat(
 			{
 				id: "default-color",
+				selfCheck: true,
 				ext: "Echo",
 				title: "Add-on items lost their default colours",
 				why: "R134 reads default colours only from each layer's Color; the item-level DefaultColor add-ons use is ignored, so their items come out uncoloured and some (e.g. Echo's 淫纹) crash while drawing.",
@@ -700,6 +705,7 @@
 		treat(
 			{
 				id: "view-rebuild",
+				selfCheck: true,
 				ext: "LSCG",
 				title: "Map buttons vanished",
 				why: "R134 rebuilds the open room view's buttons when you come back to the room; LSCG skips the game when the view is already open (R133 did nothing there), so the map's arrows and editor stayed gone in map rooms.",
@@ -810,6 +816,7 @@
 		const f = forced(c);
 		const paused = pausedReason(c.ext);
 		if (f === "off") return { state: "off", text: "forced off" };
+		if (paused && c.selfCheck && f !== "on") return { state: "running", text: `checks for the problem itself each time, so it keeps running (${paused})` };
 		if (paused && f !== "on") return { state: "paused", text: `paused by ER: ${paused}` };
 		if (paused) return { state: "running", text: `forced on (${paused})` };
 		return { state: "running", text: `should run: ${c.detail ?? "needed on this game version"}` };
@@ -904,7 +911,7 @@
 			el(
 				"p",
 				"er-help",
-				"Every switch starts on Auto: ER runs a fix only when the game needs it, and pauses an extension's fixes by itself when that extension updates past the version ER was tested with. Use On or Off to force a choice.",
+				"Every switch starts on Auto: ER runs a fix only when the game needs it. Fixes that check for the problem themselves each time keep running when their extension updates (if the update fixed it, they find nothing to do); the others pause by themselves until ER is tested with the new version. Use On or Off to force a choice.",
 			),
 		);
 		for (const [ext, info] of Object.entries(EXTENSIONS)) {

@@ -145,6 +145,13 @@ const roundTrip = () => {
 			check('beta: a newer extension pauses its fixes on Auto', sw.paused === 'throws', sw);
 			check('beta: the panel opens', await page.evaluate(() => { ER.open(); return !!document.getElementById('er-panel'); }), false);
 			check('beta: the panel shows the pause', await page.evaluate(() => /paused by ER: WCE updated to 9\.9\.9/.test(document.getElementById('er-panel').textContent)), false);
+			const echoNewer = await page.evaluate(() => {
+				// An Echo newer than the tested ones: its fixes check for the problem themselves, so they keep running.
+				bcModSdk.registerMod({ name: '服装拓展', fullName: 'Echo-like test', version: '9.9.9' });
+				ER.open();
+				return document.getElementById('er-panel').textContent;
+			});
+			check('beta: self-checking fixes keep running when their extension updates', /checks for the problem itself each time, so it keeps running \(Echo's Clothing Mod updated to 9\.9\.9/.test(echoNewer), echoNewer.slice(0, 300));
 			check('beta: ER is in Preferences > Extensions', await page.evaluate(() => !!PreferenceExtensionsSettings.ER), false);
 			const forcedOn = await page.evaluate(() => {
 				const box = [...document.querySelectorAll('#er-panel .er-ext')].find((b) => b.querySelector('.er-ext-name').textContent === 'WCE');
