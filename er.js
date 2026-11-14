@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.7.0";
+	const VERSION = "1.7.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -41,11 +41,11 @@
 	 * The extensions ER has fixes for. `mods` are their ModSDK names; `tested` is the version ER's fixes were
 	 * checked against. When the player runs a different version, that extension's fixes pause (its author may
 	 * have fixed it) until ER is tested again, unless the player keeps them on.
-	 * @type {Record<string, { label: string, mods?: string[], tested?: string }>}
+	 * @type {Record<string, { label: string, mods?: string[], tested?: string | string[] }>}
 	 */
 	const EXTENSIONS = {
 		game: { label: "Game changes (help every add-on)" },
-		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: "1.136.5" },
+		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6"] },
 		ULTRAbc: { label: "ULTRAbc", mods: ["ULTRAbc"], tested: "6.4" },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
 		BCX: { label: "BCX", mods: ["BCX"], tested: "1.1.23" },
@@ -120,8 +120,9 @@
 		const info = EXTENSIONS[ext];
 		if (!info?.tested) return null;
 		const v = installedVersion(ext);
-		if (!v || baseVersion(v) === baseVersion(info.tested)) return null;
-		return `${info.label} updated to ${v}; ER's fixes were tested with ${info.tested}`;
+		const tested = [info.tested].flat();
+		if (!v || tested.some((t) => baseVersion(t) === baseVersion(v))) return null;
+		return `${info.label} updated to ${v}; ER's fixes were tested with ${tested.join(" and ")}`;
 	}
 
 	/**
@@ -917,7 +918,7 @@
 				const v = installedVersion(ext);
 				const paused = pausedReason(ext);
 				names.append(
-					el("div", "er-ext-ver", v ? `installed ${v} · tested ${info.tested}${paused ? " · ER pauses these fixes until it is tested again" : ""}` : `not loaded · tested ${info.tested}`),
+					el("div", "er-ext-ver", v ? `installed ${v} · tested ${[info.tested].flat().join(", ")}${paused ? " · ER pauses these fixes until it is tested again" : ""}` : `not loaded · tested ${[info.tested].flat().join(", ")}`),
 				);
 			}
 			head.append(names, modeSwitch(ext, `${info.label}: all fixes`));
