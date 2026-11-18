@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.13.1";
+	const VERSION = "1.13.2";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -628,14 +628,13 @@
 						const want = expected(item);
 						if (!want) return res;
 						for (const k of KEYS) {
-							const target = want[k] ?? 0;
-							// 0 is what a saved outfit leaves out, so it loads as nothing; keep it as nothing here too, or a BCX
-							// curse that saved the 0 sees 'nothing' come back and undoes it forever.
-							if (target === 0) {
-								if (item.Property[k] === 0) delete item.Property[k];
-								else if (typeof item.Property[k] === "number" && typeof want[k] === "number") delete item.Property[k];
-							} else if (item.Property[k] !== target) {
-								item.Property[k] = target;
+							if (typeof want[k] === "number") {
+								// Exactly what the options give, 0 included: the game checks an item against its options with
+								// ===, so a missing 0 would count as a change on every init and resend the outfit forever.
+								if (item.Property[k] !== want[k]) item.Property[k] = want[k];
+							} else if (item.Property[k] === 0) {
+								// A 0 no option sets (left by an option change): saved outfits leave it out, so leave it out here.
+								delete item.Property[k];
 							}
 						}
 					} catch (e) {
@@ -648,7 +647,13 @@
 					hook("ExtendedItemSetProperty", 999, (args, next) => {
 						const res = next(args);
 						const item = args[1];
-						if (item && item.Property) for (const k of KEYS) if (item.Property[k] === 0) delete item.Property[k];
+						if (!item || !item.Property) return res;
+						try {
+							const want = expected(item) || {};
+							for (const k of KEYS) if (item.Property[k] === 0 && typeof want[k] !== "number") delete item.Property[k];
+						} catch (e) {
+							// Leave the item as the game made it.
+						}
 						return res;
 					});
 				}
