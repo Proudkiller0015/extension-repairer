@@ -95,6 +95,14 @@ const roundTrip = () => {
 				return { CustomDraw: p.CustomDraw, upperBound: p.upperBound };
 			});
 			check('add-on settings on an item survive to another player', custom.CustomDraw === 'drawing' && custom.upperBound === 222, custom);
+			const saved = await page.evaluate(() => {
+				// Saving: R134 only bundles names on its allowed list; an add-on's own setting must still go out.
+				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);
+				const item = AppearanceItem.fromAsset(a, { property: { CustomDraw: 'drawing', Text2: 'not for a hat' } });
+				const bundle = ServerAppearanceBundle([item])[0];
+				return { CustomDraw: bundle.Property?.CustomDraw, Text2: bundle.Property?.Text2 };
+			});
+			check('an add-on setting is saved; a game setting the game left out of a game item stays out', saved.CustomDraw === 'drawing' && saved.Text2 === undefined, saved);
 			const stack = await page.evaluate(() => {
 				// R134 added an option's Difficulty / HeightModifier again on every item init.
 				const C = CharacterLoadNPC('NPC_ERStack');

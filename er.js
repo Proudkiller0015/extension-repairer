@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.11.0";
+	const VERSION = "1.12.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -518,7 +518,7 @@
 				id: "saved-settings",
 				selfCheck: true,
 				ext: "Echo",
-				title: "Add-on item settings reset when an outfit was loaded",
+				title: "Add-on item settings were lost when an outfit was saved or loaded",
 				why: "R134 checks a loaded item's settings against the game's own list and drops every one it does not know (the code says 'ignore', but skipping means deleting). An add-on's own settings (e.g. AEE's Free Draw drawings, and the position, size and rotation of Echo's 渐变叠加 hair gradient) are never on that list, so they came back as the defaults after every relog and for everyone else in the room.",
 				patients: ["AEE", "Echo", "any add-on item that stores its own settings"],
 			},
@@ -539,7 +539,40 @@
 					}
 					return res;
 				});
-				return "add-on settings are kept, like R133";
+				// The other direction: saving. R134 only bundles names on an "allowed" list (the game's own, plus what the
+				// item's options and defaults name), so most add-on settings never even left the player: Echo's 身体论文
+				// kept Text1 but lost Text2/Text3, AEE's Free Draw lost its drawing.
+				if (typeof w.ItemPropertiesCompress === "function") {
+					/** Items the game itself defines (Female3DCG's static list); everything else came from an add-on. */
+					const vanilla = (/** @type {any} */ asset) => {
+						const groups = game(() => AssetFemale3DCG);
+						const g = Array.isArray(groups) ? groups.find((x) => x && x.Group === asset.Group.Name) : null;
+						return !!g && (g.Asset || []).some((/** @type {any} */ x) => (typeof x === "string" ? x : x && x.Name) === asset.Name);
+					};
+					const NEVER = new Set([...(game(() => ValidationModifiableProperties) || []), "LockedBy", "LockMemberNumber", "LockMemberName"]);
+					hook("ItemPropertiesCompress", 1000, (args, next) => {
+						let out = next(args);
+						const [item, options] = args;
+						if (!item || !item.Property || typeof item.Property !== "object" || !item.Asset) return out;
+						const omit = new Set((options && options.omit) || []);
+						/** @type {boolean | undefined} */
+						let isVanilla;
+						for (const [key, value] of Object.entries(item.Property)) {
+							if (value === undefined || omit.has(key) || NEVER.has(key)) continue;
+							if (out && Object.prototype.hasOwnProperty.call(out, key)) continue;
+							if (known(key)) {
+								// The game's own names stay the game's decision on the game's own items.
+								if ((isVanilla ??= vanilla(item.Asset))) continue;
+								// On an add-on item, only plain values (Echo's text lines), never the game's structured ones.
+								if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") continue;
+							}
+							out ??= {};
+							out[key] = JSON.parse(JSON.stringify(value));
+						}
+						return out;
+					});
+				}
+				return "add-on settings are saved and loaded, like R133";
 			},
 		);
 

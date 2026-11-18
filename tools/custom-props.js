@@ -28,6 +28,7 @@ const mode = process.argv[2] || 'noer';
 		CharacterAppearanceSetDefault(C);
 		const cases = [];
 		for (const a of Asset.filter((a) => a.Name === 'DrawingBoard')) cases.push([a, { CustomDraw: 'AEE-test-drawing-' + 'x'.repeat(50), CustomDrawSPS: 'sps-test' }]);
+		for (const a of Asset.filter((x) => x.Name === '身体论文')) cases.push([a, { Text1: 'Property of Mistress', Text2: 'Slut! 💋', Text3: 'third line' }]);
 		const g = AssetGet('Female3DCG', '额外头发_Luzi', '渐变叠加');
 		if (g) cases.push([g, { upperBound: 222, gradientSize: 77, rotation: 90 }]);
 		const out = [];
@@ -37,8 +38,10 @@ const mode = process.argv[2] || 'noer';
 			const item = InventoryGet(C, a.Group.Name);
 			if (item) Object.assign(item.Property ??= {}, props);
 			// AEE's boards are not worn through InventoryWear; what matters is loading a saved one, so bundle it by hand.
+			// Through the game's own bundling, as a real save or echo does; an item InventoryWear refuses (AEE's board) is put on by hand.
+			const worn = item || AppearanceItem.fromAsset(a, { property: { ...props } });
 			const appearance = ServerAppearanceBundle(C.Appearance).filter((b) => b.Group !== a.Group.Name);
-			appearance.push(item ? ServerAppearanceBundle([item])[0] : { Group: a.Group.Name, Name: a.Name, Property: { ...props } });
+			appearance.push(ServerAppearanceBundle([worn])[0]);
 			const other = CharacterLoadOnline({ ID: 'p' + n, Name: 'O', Nickname: 'O', MemberNumber: 5000 + n, AssetFamily: 'Female3DCG', Appearance: appearance, Title: '', Ownership: null, Lovership: [], ItemPermission: 1, BlockItems: [], LimitedItems: [], FavoriteItems: [], WhiteList: [], BlackList: [], OnlineSharedSettings: {}, ArousalSettings: {}, Game: {}, Inventory: [] }, 5000 + n);
 			n++;
 			const t = InventoryGet(other, a.Group.Name);
