@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.9.0";
+	const VERSION = "1.9.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -46,9 +46,10 @@
 	const EXTENSIONS = {
 		game: { label: "Game changes (help every add-on)" },
 		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6"] },
+		// 6.5 (18 Nov) fixed its own profile sheet and Pandora code for R134, so ER pausing its fixes there is right.
 		ULTRAbc: { label: "ULTRAbc", mods: ["ULTRAbc"], tested: "6.4" },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
-		BCX: { label: "BCX", mods: ["BCX"], tested: "1.1.23" },
+		BCX: { label: "BCX", mods: ["BCX"], tested: ["1.1.23", "1.1.24", "1.1.25"] },
 		LSCG: { label: "LSCG", mods: ["LSCG"], tested: "0.9.16" },
 	};
 
@@ -450,6 +451,8 @@
 		treat(
 			{
 				id: "bcx-curse-loop",
+				// It only steps in when the server actually sends a partial craft back, so a BCX update cannot make it wrong.
+				selfCheck: true,
 				ext: "BCX",
 				title: "BCX curses on crafted items looped",
 				why: "Since R133 the server sends crafted items back with only part of their craft data; BCX curses compare the full craft, see a change, \"undo all changes\" and loop until BCX's protection switches the curse off.",
