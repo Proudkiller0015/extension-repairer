@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.9.1";
+	const VERSION = "1.9.2";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -618,6 +618,65 @@
 					return res;
 				});
 				return "add-on settings are kept, like R133";
+			},
+		);
+
+		treat(
+			{
+				id: "late-masks",
+				selfCheck: true,
+				ext: "Echo",
+				title: "Cut-outs made by add-on masks did not show",
+				why: "R134 draws an item before its mask picture has loaded and redraws the character once the picture arrives, but it finds the character from the picture's Assets/ path. Masks an add-on builds itself (Echo's 油光全身袜 detached sleeves and cut-outs) are blob: pictures with no such path, so nobody was redrawn and the cut never appeared.",
+				patients: ["Echo", "any add-on that draws masks it generates itself"],
+			},
+			() => {
+				if (release() < 134 || typeof w.GLDrawLoadTextureAlphaMask !== "function" || typeof w.DrawGetImage !== "function") return false;
+				// Not by wrapping ImageCache's own method: something in the page rebuilds those methods from their
+				// source, which loses a wrapper's variables and broke every picture load. Hooks on the two global
+				// mask functions instead: a mask not loaded yet when it is drawn is watched, and once it arrives,
+				// every character drawn with masks is asked to redraw once.
+				/** @type {Set<string>} */
+				const watching = new Set();
+				const redraw = () => {
+					for (const C of game(() => Character) || []) if (C && Array.isArray(C.AppearanceMasks) && C.AppearanceMasks.length) C.MustDraw = true;
+				};
+				const watch = (/** @type {unknown} */ url) => {
+					if (typeof url !== "string" || watching.has(url)) return;
+					const ready = () => {
+						try {
+							return !!w.DrawGetImage(url);
+						} catch (e) {
+							return false;
+						}
+					};
+					if (ready()) return;
+					watching.add(url);
+					let tries = 0;
+					const timer = setInterval(() => {
+						// A picture still missing after a minute has failed; the game logs that itself.
+						if (ready() || ++tries > 300) {
+							clearInterval(timer);
+							watching.delete(url);
+							if (tries <= 300) redraw();
+						}
+					}, 200);
+				};
+				const watchAll = (/** @type {unknown} */ masks) => {
+					if (Array.isArray(masks)) for (const m of masks) watch(m && m.Url);
+				};
+				// After add-ons that redirect mask pictures (Echo maps them at priority 0), so the address is the real one.
+				hook("GLDrawLoadTextureAlphaMask", -1000, (args, next) => {
+					const res = next(args);
+					watchAll(args[5]);
+					return res;
+				});
+				hook("DrawApplyTextureAlphaMask", -1000, (args, next) => {
+					const res = next(args);
+					watchAll(args[3]);
+					return res;
+				});
+				return "characters are redrawn when a mask that was still loading arrives";
 			},
 		);
 
