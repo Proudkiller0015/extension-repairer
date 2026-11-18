@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.10.0";
+	const VERSION = "1.11.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -715,6 +715,151 @@
 					return res;
 				});
 				return "add-on items get their own default colours back";
+			},
+		);
+
+		treat(
+			{
+				id: "wce-profile",
+				ext: "WCE",
+				title: "WCE's rich profiles and profile notes broke",
+				why: "R134 rebuilt the profile screen as page elements. WCE's rich profile (clickable links, embedded pictures) looks for the old DescriptionInput box and never appears; its notes window draws its Save/Close buttons on the canvas under R134's own Save/Leave, so 'closing the notes' left the profile instead. ER gives WCE the box it looks for, fits WCE's views into the new screen, and puts real buttons in the menu bar for WCE's canvas ones.",
+				patients: ["WCE"],
+			},
+			() => {
+				const op = () => game(() => OnlineProfile);
+				if (release() < 134 || !op()?.IDs || typeof w.OnlineProfileLoad !== "function" || typeof w.OnlineProfileClick !== "function") return false;
+				const fix = currentFix;
+				const wce = () => (w.bcModSdk?.getModsInfo?.() ?? []).some((/** @type {any} */ m) => m.name === "WCE");
+				const ids = op().IDs;
+				// WCE's canvas buttons (its own coordinates): edit toggle, refresh after a mode change, notes, note save/close.
+				const AT = { toggle: [135, 105], refresh: [1665, 105], notes: [1565, 105], noteSave: [1765, 105], noteClose: [1865, 105] };
+				const press = (/** @type {number[]} */ [x, y]) => {
+					const ox = w.MouseX, oy = w.MouseY;
+					w.MouseX = x;
+					w.MouseY = y;
+					try {
+						w.OnlineProfileClick(new MouseEvent("click"));
+					} finally {
+						w.MouseX = ox;
+						w.MouseY = oy;
+					}
+				};
+				const style = document.createElement("style");
+				style.id = "er-wce-profile";
+				style.textContent = [
+					`#${ids.screen} #bceRichOnlineProfile, #${ids.screen} #bceNoteInput { position: static !important; left: auto !important; top: auto !important; width: 100% !important; height: 100% !important; min-height: 20em; box-sizing: border-box; font-size: inherit !important; }`,
+					`#${ids.screen}:has(#bceRichOnlineProfile) #${ids.description}, #${ids.screen}:has(#bceRichOnlineProfile) #${ids.ownersNotes} { display: none !important; }`,
+					`#${ids.screen}.er-wce-notes #${ids.description}, #${ids.screen}.er-wce-notes #${ids.ownersNotes}, #${ids.screen}.er-wce-notes #bceRichOnlineProfile { display: none !important; }`,
+					`#${ids.screen}.er-wce-notes #${ids.saveButton}, #${ids.screen}.er-wce-notes #${ids.cancelButton}, #${ids.screen}.er-wce-notes #${ids.ownersNotesButton}, #${ids.screen}.er-wce-notes #er-wce-toggle, #${ids.screen}.er-wce-notes #er-wce-notes { display: none !important; }`,
+					`#${ids.screen}:not(.er-wce-notes) #er-wce-note-save, #${ids.screen}:not(.er-wce-notes) #er-wce-note-close { display: none !important; }`,
+					"#DescriptionInput.er-wce-stand-in { display: none !important; }",
+				].join("\n");
+				(document.head || document.documentElement).append(style);
+				const button = (/** @type {string} */ id, /** @type {string} */ image, /** @type {string} */ tooltip, /** @type {() => void} */ onClick) => {
+					const EB = game(() => ElementButton);
+					if (EB && typeof EB.Create === "function") return EB.Create(id, onClick, { image, tooltip });
+					return Object.assign(document.createElement("button"), { id, title: tooltip, onclick: onClick, textContent: tooltip });
+				};
+				let richSeen = false;
+				// Below WCE's own hook (it looks for the box right after the game's load returns).
+				hook("OnlineProfileLoad", -100, (args, next) => {
+					const res = next(args);
+					if (!wce()) return res;
+					try {
+						setUp();
+					} catch (e) {
+						// ER's additions must never stop the profile from opening.
+						console.warn("[ER] wce-profile:", e);
+					}
+					return res;
+				});
+				function setUp() {
+					const screen = document.getElementById(ids.screen);
+					if (!screen) return;
+					richSeen = false;
+					watch();
+					if (!document.getElementById("DescriptionInput")) {
+						const standIn = document.createElement("textarea");
+						standIn.id = "DescriptionInput";
+						standIn.className = "er-wce-stand-in";
+						standIn.setAttribute("aria-hidden", "true");
+						standIn.tabIndex = -1;
+						screen.append(standIn);
+					}
+					const bar = document.getElementById(ids.cancelButton)?.parentElement;
+					if (bar) {
+						bar.append(
+							Object.assign(button("er-wce-toggle", "Icons/Crafting.png", "[WCE] Formatted / plain text", () => press(AT.toggle)), { hidden: true }),
+							...(document.getElementById("bceNoteInput") ? [button("er-wce-notes", "Icons/Notifications.png", "[WCE] Notes", () => press(AT.notes))] : []),
+							button("er-wce-note-close", "Icons/Cancel.png", "[WCE] Close note", () => press(AT.noteClose)),
+							button("er-wce-note-save", "Icons/Accept.png", "[WCE] Save note", () => press(AT.noteSave)),
+						);
+					}
+				}
+				/** Puts WCE's views inside the new screen and shows the right buttons. */
+				const sync = () => {
+					if (!active(fix)) return;
+					const screen = document.getElementById(ids.screen);
+					const area = document.getElementById(ids.description)?.parentElement;
+					if (!screen || !area) return;
+					const rich = document.getElementById("bceRichOnlineProfile");
+					if (rich) richSeen = true;
+					if (rich && rich.parentElement !== area) area.append(rich);
+					const note = document.getElementById("bceNoteInput");
+					const notesOpen = !!note && !note.classList.contains("bce-hidden");
+					screen.classList.toggle("er-wce-notes", notesOpen);
+					if (notesOpen && note.parentElement !== area) area.append(note);
+					const toggle = document.getElementById("er-wce-toggle");
+					if (toggle) toggle.hidden = !richSeen;
+				};
+				// WCE adds and shows its views on its own schedule: follow the page while the profile is open, and
+				// every frame too.
+				/** @type {MutationObserver | null} */
+				let watcher = null;
+				const watch = () => {
+					watcher?.disconnect();
+					watcher = new MutationObserver(() => {
+						if (!document.getElementById(ids.screen)) {
+							watcher?.disconnect();
+							watcher = null;
+							return;
+						}
+						try {
+							sync();
+						} catch (e) {
+							/* never break the page */
+						}
+					});
+					watcher.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+				};
+				hook("OnlineProfileRun", -100, (args, next) => {
+					const res = next(args);
+					try {
+						sync();
+					} catch (e) {
+						/* never break the page */
+					}
+					return res;
+				});
+				// The owner's notes button switches the text: let WCE refresh its formatted copy.
+				if (typeof w.OnlineProfileSetMode === "function") {
+					hook("OnlineProfileSetMode", -100, (args, next) => {
+						const res = next(args);
+						if (wce() && document.getElementById("bceRichOnlineProfile")) press(AT.refresh);
+						return res;
+					});
+				}
+				// WCE's notes box goes back to the page body when the profile closes, where WCE keeps it.
+				hook("OnlineProfileUnload", -100, (args, next) => {
+					const note = document.getElementById("bceNoteInput");
+					if (note && note.parentElement !== document.body) document.body.append(note);
+					watcher?.disconnect();
+					watcher = null;
+					document.getElementById("DescriptionInput")?.classList.contains("er-wce-stand-in") && document.getElementById("DescriptionInput")?.remove();
+					return next(args);
+				});
+				return "WCE's formatted profiles and notes work in the new profile screen";
 			},
 		);
 
