@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.8.1";
+	const VERSION = "1.9.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -585,6 +585,36 @@
 					return res;
 				});
 				return "the chosen option wins again, like R133";
+			},
+		);
+
+		treat(
+			{
+				id: "saved-settings",
+				selfCheck: true,
+				ext: "Echo",
+				title: "Add-on item settings reset when an outfit was loaded",
+				why: "R134 checks a loaded item's settings against the game's own list and drops every one it does not know (the code says 'ignore', but skipping means deleting). An add-on's own settings (e.g. AEE's Free Draw drawings, and the position, size and rotation of Echo's 渐变叠加 hair gradient) are never on that list, so they came back as the defaults after every relog and for everyone else in the room.",
+				patients: ["AEE", "Echo", "any add-on item that stores its own settings"],
+			},
+			() => {
+				if (release() < 134 || typeof w.ItemPropertiesValidate !== "function") return false;
+				const known = (/** @type {string} */ key) => !!game(() => PropertyData?.[key]);
+				// No probe: this runs before the game has loaded its items. It needs none either: it only puts back
+				// what the game left out of its answer, so once the game keeps these itself it changes nothing.
+				hook("ItemPropertiesValidate", 1000, (args, next) => {
+					const res = next(args);
+					const [properties, , options] = args;
+					if (!res || !res.value || !properties || typeof properties !== "object" || Array.isArray(properties)) return res;
+					const omit = new Set((options && options.omit) || []);
+					for (const [key, value] of Object.entries(properties)) {
+						// Only what the game has no rules for; everything it knows stays its decision.
+						if (value === undefined || known(key) || omit.has(key) || key in res.value) continue;
+						res.value[key] = value;
+					}
+					return res;
+				});
+				return "add-on settings are kept, like R133";
 			},
 		);
 

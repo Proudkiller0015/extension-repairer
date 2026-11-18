@@ -14,7 +14,7 @@ When a game update removes or changes something an add-on still uses, that add-o
 ## Install
 
 **Userscript (recommended):** install [Tampermonkey](https://www.tampermonkey.net/) or Violentmonkey, then open
-**https://raw.githubusercontent.com/Proudkiller0015/extension-repairer/main/er.user.js** and press Install.
+**https://raw.githubusercontent.com/Proudkiller0015/extension-repairer/main/er.user.js** and press Install. It runs on every game server: US, Europe and Asia.
 
 The userscript loads ER before your other add-ons. Some add-ons (for example ULTRAbc on R134) check the game while they start, so ER has to be there first to help them.
 
@@ -34,7 +34,7 @@ Open them with **`/er`** in a chat room, or **Preferences > Extensions > ER - Ex
 
 Every extension and every fix has a switch: **Auto** (the default), **On** or **Off**. On Auto, ER decides: a fix runs only when the game needs it. Each extension's fixes are tested with one version of that extension (Echo 1.136.5, ULTRAbc 6.4, WCE 6.3.20, BCX 1.1.23, LSCG 0.9.16). When that extension updates, ER pauses its fixes by itself, because the author may have fixed it, until ER is tested again. Next to each switch ER says what it thinks: running and why, not needed, paused (and why), or off. Use **On** to keep a paused fix running, or **Off** to stop one. Most switches act at once; fixes that start with the game need a reload.
 
-## What it treats (R134 beta)
+## What it treats (R134)
 
 | Fix | Why it broke | Add-ons it helps |
 |---|---|---|
@@ -52,6 +52,7 @@ Every extension and every fix has a switch: **Auto** (the default), **On** or **
 | Add-on items lost their default colours | R134 only reads colours set on each layer; the item-level `DefaultColor` add-ons use is ignored (about 420 Echo items came out uncoloured, and 淫纹 crashed while drawing) | Echo, any add-on with its own items |
 | Map buttons vanished | R134 rebuilds the open room view's buttons when you come back to the room; LSCG skips the game when the view is already open (R133 did nothing there), so the map's arrows and editor stayed gone. ER rebuilds the view when nobody else did | LSCG |
 | Items with options in their baseline could not change | R134 keeps the old option when merging; items with `BaselineProperty.TypeRecord` (Echo's 标志纹饰) never changed | Echo |
+| Add-on item settings reset when an outfit loaded | R134 checks a loaded item's settings against the game's own list and drops every one it does not know, so an add-on's own settings came back empty or as the defaults after every relog and for everyone else in the room (AEE's Free Draw drawings, the position, size and rotation of Echo's 渐变叠加 hair gradient) | AEE, Echo, any add-on that stores its own item settings |
 | `PreferenceArousalIsActive()` | Now needs a character; old calls crashed | WCE |
 | `ExtendedItemDrawHeader(X, Y, Item)` and the `DialogFocusItem` defaults | Argument order changed | Older item add-ons |
 | `CommonDebounce(func)` / `CommonThrottle(func)` | Now `(interval, func)` | Older add-ons |
@@ -74,7 +75,7 @@ ER is a stopgap. Please update your add-on for the new game version anyway. The 
 
 ## Testing
 
-`npm install`, then `node test.js` (set `CHROME` to your Chrome path if it is not the Windows default) loads the R134 beta and live R133 in headless Chrome. It checks that every fix applies on the beta and that nothing changes on live. `tools/` has the scripts used to find the breakages: `diff-globals.js` compares two game builds, `scan.js` searches every FUSAM add-on for removed names, and `survey.js` loads each add-on as a fake logged-in player and records its errors.
+`npm install`, then `node test.js` (set `CHROME` to your Chrome path if it is not the Windows default) loads live R134 in headless Chrome and checks that every fix applies and works. `tools/` has the scripts used to find the breakages: `diff-globals.js` compares two game builds, `scan.js` searches every FUSAM add-on for removed names, and `survey.js` loads each add-on as a fake logged-in player and records its errors.
 
 ## License
 

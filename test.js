@@ -1,11 +1,10 @@
-// ER in the real game, headless, never logged in. Checks the beta (where ER treats) and live (where it must
-// leave everything alone). Run: node test.js
+// ER in the real game, headless, never logged in. R134 went live on 18 Nov 2026, so the checks that were run
+// on the beta run on live now; there is no R133 left to check that ER leaves alone. Run: node test.js
 const path = require('path');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
 
 const BUILDS = {
-	live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
-	beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/',
+	beta: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
 };
 const MODSDK = 'https://cdn.jsdelivr.net/npm/bondage-club-mod-sdk@1.2.0/dist/bcmodsdk.js';
 let failed = 0;
@@ -54,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.beta);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`beta: ${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -93,6 +92,15 @@ const roundTrip = () => {
 			const trip = await page.evaluate(roundTrip);
 			check('beta: Bar Stool decal survives to another player', trip.BarStool && trip.BarStool.mine === 2 && trip.BarStool.theirs === 2, trip);
 			check('beta: Hypnotic Visor option survives to another player', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);
+			const custom = await page.evaluate(() => {
+				// An add-on's own setting (AEE Free Draw's CustomDraw, Echo's gradient sliders) on a game item, loaded by another player.
+				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);
+				const bundle = [{ Group: a.Group.Name, Name: a.Name, Property: { CustomDraw: 'drawing', upperBound: 222 } }];
+				const other = CharacterLoadOnline({ ID: 'xcustom', Name: 'Other', Nickname: 'Other', MemberNumber: 2003, AssetFamily: 'Female3DCG', Appearance: bundle, Title: '', Ownership: null, Lovership: [], ItemPermission: 1, BlockItems: [], LimitedItems: [], FavoriteItems: [], WhiteList: [], BlackList: [], OnlineSharedSettings: {}, ArousalSettings: {}, Game: {}, Inventory: [] }, 2003);
+				const p = InventoryGet(other, a.Group.Name)?.Property ?? {};
+				return { CustomDraw: p.CustomDraw, upperBound: p.upperBound };
+			});
+			check('beta: add-on settings on an item survive to another player', custom.CustomDraw === 'drawing' && custom.upperBound === 222, custom);
 			const craft = await page.evaluate(() => {
 				window.BCX_Loaded = true;
 				Player.MemberNumber = 1001;
@@ -173,17 +181,6 @@ const roundTrip = () => {
 			await page.evaluate(() => document.getElementById('er-panel').remove());
 			check('beta: /er is registered',await page.waitForFunction(() => Commands.some((c) => c.Tag === 'er'), { timeout: 5000 }).then(() => true, () => false), false);
 			check('beta: no page errors', errors.length === 0, errors);
-			await page.close();
-		}
-		// Live R133: ER must find nothing to do and change nothing.
-		{
-			const { page, errors } = await open(browser, BUILDS.live);
-			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
-			check('live: every check is healthy except the BCX curse fix (needed since R133)', Object.entries(chart).every(([id, s]) => s === 'healthy' || (id === 'bcx-curse-loop' && s === 'treated')), chart);
-			check('live: no stand-ins added', (await page.evaluate(() => ER.standIns())).length === 0, await page.evaluate(() => ER.standIns()));
-			const trip = await page.evaluate(roundTrip);
-			check('live: Hypnotic Visor option round trip still works', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);
-			check('live: no page errors', errors.length === 0, errors);
 			await page.close();
 		}
 	} finally {

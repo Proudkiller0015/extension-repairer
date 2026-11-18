@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ER - Extension Repairer
 // @namespace    https://github.com/Proudkiller0015/extension-repairer
-// @version      1.0.2
+// @version      1.0.3
 // @description  An emergency room for Bondage Club add-ons: keeps add-ons working when a game update breaks them. Always runs the newest fixes.
 // @icon         https://raw.githubusercontent.com/Proudkiller0015/extension-repairer/main/icon-64.png
 // @homepageURL  https://github.com/Proudkiller0015/extension-repairer
@@ -15,6 +15,8 @@
 // @match        https://bondage-europe.com/*
 // @match        https://www.bondageeurope.com/*
 // @match        https://bondageeurope.com/*
+// @match        https://www.bondage-asia.com/*
+// @match        https://bondage-asia.com/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
