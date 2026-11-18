@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.9.3";
+	const VERSION = "1.10.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -540,6 +540,82 @@
 					return res;
 				});
 				return "add-on settings are kept, like R133";
+			},
+		);
+
+		treat(
+			{
+				id: "stacking-init",
+				selfCheck: true,
+				ext: "game",
+				title: "Item difficulty and height grew every time an item was loaded",
+				why: "R134 adds Difficulty and HeightModifier together when it merges properties, and re-initialising an item merges its option's value into the value already there: a rope went 1, 2, 3... and Futuristic Heels lifted the character 6, 12, 18, 24 with every reload or echo. Outfits drifted out of place, restraints got harder, and BCX curses kept 'undoing changes' on the moving value. ER sets both back to what the item's chosen options give, which also repairs outfits saved with the inflated values.",
+				patients: ["everyone", "BCX (curse spam)"],
+			},
+			() => {
+				const gather = () => game(() => ExtendedItemGatherOptions);
+				if (release() < 134 || typeof w.ExtendedItemInit !== "function" || typeof gather() !== "function") return false;
+				const KEYS = ["Difficulty", "HeightModifier"];
+				/** What the chosen options add up to, per key; a key no option or baseline sets is left out. @param {any} item */
+				const expected = (item) => {
+					/** @type {any[]} */
+					let options = [];
+					try {
+						options = gather()(item) || [];
+					} catch (e) {
+						return null;
+					}
+					if (!options.length) return null;
+					/** @type {Record<string, number>} */
+					const sums = {};
+					const baselines = new Set();
+					for (const o of options) {
+						for (const k of KEYS) {
+							const v = o && o.Property && o.Property[k];
+							if (typeof v === "number") sums[k] = (sums[k] ?? 0) + v;
+						}
+						const base = o && o.ParentData && o.ParentData.baselineProperty;
+						if (base && !baselines.has(base)) {
+							baselines.add(base);
+							for (const k of KEYS) if (typeof base[k] === "number") sums[k] = (sums[k] ?? 0) + base[k];
+						}
+					}
+					return sums;
+				};
+				hook("ExtendedItemInit", 1000, (args, next) => {
+					const item = args[1];
+					const res = next(args);
+					try {
+						const archetype = item && item.Asset && item.Asset.Archetype;
+						if (!item || !item.Property || (archetype !== "typed" && archetype !== "modular")) return res;
+						const want = expected(item);
+						if (!want) return res;
+						for (const k of KEYS) {
+							const target = want[k] ?? 0;
+							// 0 is what a saved outfit leaves out, so it loads as nothing; keep it as nothing here too, or a BCX
+							// curse that saved the 0 sees 'nothing' come back and undoes it forever.
+							if (target === 0) {
+								if (item.Property[k] === 0) delete item.Property[k];
+								else if (typeof item.Property[k] === "number" && typeof want[k] === "number") delete item.Property[k];
+							} else if (item.Property[k] !== target) {
+								item.Property[k] = target;
+							}
+						}
+					} catch (e) {
+						// A value we could not correct must never break the game's item setup.
+					}
+					return res;
+				});
+				// Changing an option takes the old option's value off and leaves a 0 behind; a saved outfit leaves 0 out.
+				if (typeof w.ExtendedItemSetProperty === "function") {
+					hook("ExtendedItemSetProperty", 999, (args, next) => {
+						const res = next(args);
+						const item = args[1];
+						if (item && item.Property) for (const k of KEYS) if (item.Property[k] === 0) delete item.Property[k];
+						return res;
+					});
+				}
+				return "an item's difficulty and height are what its options give, however often it loads";
 			},
 		);
 

@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -95,6 +95,17 @@ const roundTrip = () => {
 				return { CustomDraw: p.CustomDraw, upperBound: p.upperBound };
 			});
 			check('add-on settings on an item survive to another player', custom.CustomDraw === 'drawing' && custom.upperBound === 222, custom);
+			const stack = await page.evaluate(() => {
+				// R134 added an option's Difficulty / HeightModifier again on every item init.
+				const C = CharacterLoadNPC('NPC_ERStack');
+				CharacterAppearanceSetDefault(C);
+				InventoryWear(C, 'HempRope', 'ItemFeet');
+				const rope = InventoryGet(C, 'ItemFeet');
+				const first = rope.Property.Difficulty;
+				for (let i = 0; i < 3; i++) ExtendedItemInit(C, rope, false, false);
+				return { first, after: rope.Property.Difficulty };
+			});
+			check('an item difficulty no longer grows when it is initialised again', stack.after === stack.first, stack);
 			const craft = await page.evaluate(() => {
 				window.BCX_Loaded = true;
 				Player.MemberNumber = 1001;
