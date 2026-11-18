@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.13.2";
+	const VERSION = "1.13.3";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -658,6 +658,42 @@
 					});
 				}
 				return "an item's difficulty and height are what its options give, however often it loads";
+			},
+		);
+
+		treat(
+			{
+				id: "minigame-return",
+				selfCheck: true,
+				ext: "game",
+				title: "Add-on minigames crashed when they ended",
+				why: "R134 calls the minigame's return as a function; before, it could be the name of one (the game looked it up). Add-ons still pass names (LSCG's sleepy drink and brainwash games pass \"LSCG_InjectEnd_Sedative\"), so the game called a string when the minigame ended and the player was stuck. ER turns a name into its function.",
+				patients: ["LSCG", "any add-on with its own minigame"],
+			},
+			() => {
+				if (release() < 134 || typeof w.MiniGameEnd !== "function") return false;
+				/** A function's name (like R133 took it, "Name" or "Name()", dotted paths too) as the function, or null. */
+				const resolve = (/** @type {string} */ name) => {
+					const path = name.trim().replace(/\(\)$/, "").split(".");
+					/** @type {any} */
+					let target = w;
+					for (const key of path) target = target == null ? undefined : target[key];
+					return typeof target === "function" ? () => target() : null;
+				};
+				const fixUp = () => {
+					if (typeof w.MiniGameReturnFunction === "string") w.MiniGameReturnFunction = resolve(w.MiniGameReturnFunction);
+				};
+				if (typeof w.MiniGameStart === "function") {
+					hook("MiniGameStart", 1000, (args, next) => {
+						if (typeof args[2] === "string") args[2] = resolve(args[2]);
+						return next(args);
+					});
+				}
+				hook("MiniGameEnd", 1000, (args, next) => {
+					fixUp();
+					return next(args);
+				});
+				return "a minigame's return given by name works again";
 			},
 		);
 

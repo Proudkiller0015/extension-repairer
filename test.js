@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -95,6 +95,20 @@ const roundTrip = () => {
 				return { CustomDraw: p.CustomDraw, upperBound: p.upperBound };
 			});
 			check('add-on settings on an item survive to another player', custom.CustomDraw === 'drawing' && custom.upperBound === 222, custom);
+			const mini = await page.evaluate(async () => {
+				// LSCG's sleepy drink: a minigame whose return function is given by name, as before R134.
+				window.ERTestGameRun = () => {};
+				window.ERTestGameClick = () => {};
+				window.ERTestGameLoad = () => {};
+				window.ERTestEnd = () => { window.__erEnded = true; };
+				const before = CurrentScreen;
+				await MiniGameStart('ERTestGame', 5, 'ERTestEnd');
+				let error = null;
+				try { MiniGameEnd(); } catch (e) { error = e.message; }
+				await CommonSetScreen('Character', before === 'Login' ? 'Login' : before);
+				return { ended: !!window.__erEnded, error };
+			});
+			check('a minigame return given by name runs (LSCG sleepy drink)', mini.ended && !mini.error, mini);
 			const saved = await page.evaluate(() => {
 				// Saving: R134 only bundles names on its allowed list; an add-on's own setting must still go out.
 				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);
