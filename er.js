@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.12.0";
+	const VERSION = "1.13.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -58,7 +58,7 @@
 	 * Per extension and per fix: "auto" (ER decides, the default), "on" (forced on, even while paused) or "off".
 	 * A fix's own setting wins over its extension's.
 	 * @typedef {"auto" | "on" | "off"} Mode
-	 * @typedef {{ mode: Record<string, Mode> }} Settings
+	 * @typedef {{ mode: Record<string, Mode>, notifyUpdates: boolean }} Settings
 	 */
 
 	/** @returns {Settings} */
@@ -68,9 +68,9 @@
 			/** @type {Record<string, Mode>} */
 			const mode = {};
 			for (const [k, v] of Object.entries(s.mode && typeof s.mode === "object" ? s.mode : {})) if (v === "on" || v === "off") mode[k] = v;
-			return { mode };
+			return { mode, notifyUpdates: s.notifyUpdates !== false };
 		} catch {
-			return { mode: {} };
+			return { mode: {}, notifyUpdates: true };
 		}
 	}
 
@@ -1034,6 +1034,7 @@
 #er-panel .er-close { margin-left: auto; background: rgba(255,255,255,.18); color: #fff; border: 0; border-radius: 8px; width: 34px; height: 34px; font-size: 18px; cursor: pointer; }
 #er-panel .er-body { overflow: auto; padding: 10px 16px 4px; }
 #er-panel .er-help { font-size: 13px; color: #5d5555; margin: 2px 0 8px; }
+#er-panel .er-option { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 0 0 8px; cursor: pointer; }
 #er-panel .er-ext { border: 1px solid #ead9d9; border-radius: 10px; margin: 10px 0; overflow: hidden; }
 #er-panel .er-ext-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #fbf3f3; }
 #er-panel .er-ext-name { font-weight: 700; }
@@ -1101,6 +1102,16 @@
 		const body = /** @type {HTMLElement} */ (panel.querySelector(".er-body"));
 		const scroll = body.scrollTop;
 		body.replaceChildren();
+		const updates = el("label", "er-option");
+		const box = /** @type {HTMLInputElement} */ (el("input"));
+		box.type = "checkbox";
+		box.checked = settings.notifyUpdates;
+		box.addEventListener("change", () => {
+			settings.notifyUpdates = box.checked;
+			saveSettings();
+		});
+		updates.append(box, document.createTextNode(" Tell me when a new ER is ready (reload the game to get it)"));
+		body.append(updates);
 		body.append(
 			el(
 				"p",
@@ -1234,7 +1245,38 @@
 	 */
 	const ready = () => document.readyState !== "loading" && typeof w.GameVersion === "string" && typeof w.CommonSetScreen === "function";
 
+	/**
+	 * Every 15 minutes, ask GitHub Pages for the newest version; when it is newer than this copy, say so once
+	 * (a game toast, and a line in the chat if the player is in a room). ER always loads the newest copy on a
+	 * reload, so a reload is all it takes. Switched off with the panel's first box.
+	 */
+	/** @type {() => Promise<void>} */
+	let checkForUpdate = async () => {};
+	function watchForUpdates() {
+		/** @type {string | null} */
+		let told = null;
+		const check = async () => {
+			if (!settings.notifyUpdates) return;
+			try {
+				const text = await (await fetch(`${NEWEST}?v=${Date.now()}`, { cache: "no-store" })).text();
+				const latest = /const VERSION = "(\d+\.\d+\.\d+)"/.exec(text)?.[1];
+				if (!latest || !newer(latest, VERSION) || latest === told) return;
+				told = latest;
+				const message = `ER ${latest} is ready (you have ${VERSION}). Reload the game to update.`;
+				const toast = game(() => ToastManager);
+				if (toast && typeof toast.info === "function") toast.info(message, { title: "ER update", duration: 20000 });
+				if (game(() => CurrentScreen) === "ChatRoom" && typeof w.ChatRoomSendLocal === "function") w.ChatRoomSendLocal(`✚ ${message}`);
+				if (!toast) console.info(`[ER] ${message}`);
+			} catch {
+				// Offline or GitHub down: try again next time.
+			}
+		};
+		checkForUpdate = check;
+		setInterval(check, 15 * 60 * 1000);
+	}
+
 	function start() {
+		watchForUpdates();
 		standInFixes();
 		const sdkReady = () => {
 			if (!w.bcModSdk) return false;
@@ -1261,6 +1303,8 @@
 	w.ER = {
 		version: VERSION,
 		repository: REPO,
+		/** Looks for a newer ER now (it also does every 15 minutes) and says so if there is one. */
+		checkForUpdate: () => checkForUpdate(),
 		/** The chart: what each fix found. */
 		chart: () => chart.map((c) => ({ ...c })),
 		/** Names ER put back on window. */

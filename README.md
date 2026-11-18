@@ -10,6 +10,7 @@ When a game update removes or changes something an add-on still uses, that add-o
 - **Safe on any version:** every fix checks the game first and only acts when something is actually missing or broken. On a game version with nothing to fix, ER does nothing.
 - **Never talks to the server** and sends nothing anywhere.
 - Type **`/er`** in a chat room (or open Preferences > Extensions) to see every fix, what ER thinks of it, and switch it.
+- **Tells you when an update is ready:** every 15 minutes ER checks for a newer version and says so once (a toast, and a line in the chat); reload to get it. Switch it off with the first box in the `/er` panel.
 
 ## Install
 
