@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.9.2";
+	const VERSION = "1.9.3";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -46,8 +46,6 @@
 	const EXTENSIONS = {
 		game: { label: "Game changes (help every add-on)" },
 		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6"] },
-		// 6.5 (18 Nov) fixed its own profile sheet and Pandora code for R134, so ER pausing its fixes there is right.
-		ULTRAbc: { label: "ULTRAbc", mods: ["ULTRAbc"], tested: "6.4" },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
 		BCX: { label: "BCX", mods: ["BCX"], tested: ["1.1.23", "1.1.24", "1.1.25"] },
 		LSCG: { label: "LSCG", mods: ["LSCG"], tested: "0.9.16" },
@@ -291,7 +289,7 @@
 				ext: "game",
 				title: "InformationSheetSecondScreen",
 				why: "R134 rebuilt the profile sheet without its second page; add-ons that hook that page stopped loading.",
-				patients: ["ULTRAbc", "AFC", "FCM"],
+				patients: ["AFC", "FCM"],
 			},
 			() => standIns_({
 				InformationSheetSecondScreen: variable(false),
@@ -366,36 +364,6 @@
 				ControllerSupportKeyDown: noop(false),
 				ControllerActiveAreas: variable([]),
 			}),
-		);
-
-		treat(
-			{
-				id: "infiltration",
-				ext: "ULTRAbc",
-				title: "InfiltrationMission / InfiltrationTarget / InfiltrationDifficulty",
-				why: "R134 merged the Pandora mission into one InfiltrationMissionState object.",
-				patients: ["ULTRAbc"],
-			},
-			() => {
-				const state = () => game(() => InfiltrationMissionState);
-				/** @param {object} part */
-				const write = (part) => {
-					const next = { ...(state() ?? { Difficulty: 0 }), ...part };
-					game(() => (InfiltrationMissionState = next));
-				};
-				return standIns_({
-					InfiltrationMission: { get: () => state()?.Mission ?? "", set: (v) => write({ Mission: v }) },
-					InfiltrationDifficulty: { get: () => state()?.Difficulty ?? 0, set: (v) => write({ Difficulty: v }) },
-					InfiltrationTarget: {
-						get: () => {
-							const s = state();
-							return s && s.Target ? { Type: s.Target, Name: s.Name, Found: s.Found, Fail: s.Fail, PrivateRoom: s.PrivateRoom } : null;
-						},
-						set: (t) => write(t ? { Target: t.Type, Name: t.Name, Found: !!t.Found, Fail: !!t.Fail, PrivateRoom: !!t.PrivateRoom } : { Target: undefined }),
-					},
-					InfiltrationObjectType: { get: () => game(() => InfiltrationObjectList) ?? [], set: () => {} },
-				});
-			},
 		);
 
 		treat(
@@ -512,52 +480,6 @@
 					return res;
 				});
 				return "keeps the full craft BCX's curses compare against";
-			},
-		);
-
-		treat(
-			{
-				id: "ubc-info-sheet",
-				ext: "ULTRAbc",
-				title: "ULTRAbc drew its old profile sheet over the new one",
-				why: "R134 rebuilt the profile sheet as page elements; ULTRAbc still draws its own canvas copy of the old sheet on top, so the profile shows twice.",
-				patients: ["ULTRAbc"],
-			},
-			() => {
-				if (release() < 134 || typeof w.InformationSheetRun !== "function") return false;
-				/** @type {boolean | undefined} */
-				let ubc;
-				const hasUbc = () => (ubc ??= (w.bcModSdk?.getModsInfo?.() ?? []).some((/** @type {any} */ m) => m.name === "ULTRAbc") || undefined) === true;
-				/** A canvas nobody sees, for ULTRAbc's old sheet. */
-				let scratch = /** @type {CanvasRenderingContext2D | null} */ (null);
-				let reached = false;
-				// Lowest priority: tells us whether the game's own sheet was reached.
-				hook("InformationSheetRun", -1000, (args, next) => {
-					reached = true;
-					return next(args);
-				});
-				// Just above ULTRAbc's hook (priority 4): add-ons with higher priorities run normally first.
-				hook("InformationSheetRun", 5, (args, next) => {
-					if (!hasUbc()) return next(args);
-					reached = false;
-					const real = game(() => MainCanvas);
-					if (!scratch) {
-						const c = document.createElement("canvas");
-						c.width = real?.canvas?.width ?? 2000;
-						c.height = real?.canvas?.height ?? 1000;
-						scratch = c.getContext("2d");
-					}
-					let res;
-					try {
-						MainCanvas = scratch;
-						res = next(args);
-					} finally {
-						MainCanvas = real;
-					}
-					if (!reached && sdk) sdk.callOriginal("InformationSheetRun", args);
-					return res;
-				});
-				return "the game's profile sheet shows alone";
 			},
 		);
 

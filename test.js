@@ -4,7 +4,7 @@ const path = require('path');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
 
 const BUILDS = {
-	beta: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
+	live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
 };
 const MODSDK = 'https://cdn.jsdelivr.net/npm/bondage-club-mod-sdk@1.2.0/dist/bcmodsdk.js';
 let failed = 0;
@@ -48,14 +48,14 @@ const roundTrip = () => {
 (async () => {
 	const browser = await puppeteer.launch({ executablePath: process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new' });
 	try {
-		// The beta: R134 removed things add-ons use.
+		// Live R134: it removed things add-ons use.
 		{
-			const { page, errors } = await open(browser, BUILDS.beta);
+			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
-			check('beta: every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'infiltration', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`beta: ${id} treated`, chart[id] === 'treated', chart[id]);
+			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
-			for (const id of ['chat-width', 'modular-options']) check(`beta: ${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
+			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
 				ChatRoomData = { Space: 'M', Game: 'LARP' };
 				const inRoom = [ChatRoomSpace, ChatRoomGame];
@@ -63,20 +63,14 @@ const roundTrip = () => {
 				ChatSearchSpace = 'Asylum';
 				return { inRoom, lobby: ChatRoomSpace };
 			});
-			check('beta: ChatRoomSpace/ChatRoomGame follow the room', space.inRoom[0] === 'M' && space.inRoom[1] === 'LARP', space);
-			check('beta: ChatRoomSpace follows the lobby outside a room', space.lobby === 'Asylum', space);
-			check('beta: InformationSheetSecondScreenRun can be hooked', await page.evaluate(() => {
+			check('ChatRoomSpace/ChatRoomGame follow the room', space.inRoom[0] === 'M' && space.inRoom[1] === 'LARP', space);
+			check('ChatRoomSpace follows the lobby outside a room', space.lobby === 'Asylum', space);
+			check('InformationSheetSecondScreenRun can be hooked', await page.evaluate(() => {
 				const m = bcModSdk.registerMod({ name: 'ERTestHook', fullName: 'x', version: '1' });
 				m.hookFunction('InformationSheetSecondScreenRun', 0, (a, n) => n(a));
 				return true;
 			}), false);
-			const infil = await page.evaluate(() => {
-				InfiltrationMission = 'CatBurglar';
-				InfiltrationTarget = { Type: 'GoldCollar', Name: 'Gold collar' };
-				return { state: InfiltrationMissionState, mission: InfiltrationMission, target: InfiltrationTarget?.Type };
-			});
-			check('beta: old Pandora mission writes land in InfiltrationMissionState', infil.state?.Mission === 'CatBurglar' && infil.state?.Target === 'GoldCollar' && infil.target === 'GoldCollar', infil);
-			check('beta: PreferenceArousalIsActive() with no character works', await page.evaluate(() => typeof PreferenceArousalIsActive() === 'boolean'), false);
+			check('PreferenceArousalIsActive() with no character works', await page.evaluate(() => typeof PreferenceArousalIsActive() === 'boolean'), false);
 			const debounce = await page.evaluate(async () => {
 				let calls = 0;
 				const old = CommonDebounce(() => calls++);
@@ -88,10 +82,10 @@ const roundTrip = () => {
 				await new Promise((r) => setTimeout(r, 120));
 				return [calls, calls2];
 			});
-			check('beta: CommonDebounce old and new forms both debounce', debounce[0] === 1 && debounce[1] === 1, debounce);
+			check('CommonDebounce old and new forms both debounce', debounce[0] === 1 && debounce[1] === 1, debounce);
 			const trip = await page.evaluate(roundTrip);
-			check('beta: Bar Stool decal survives to another player', trip.BarStool && trip.BarStool.mine === 2 && trip.BarStool.theirs === 2, trip);
-			check('beta: Hypnotic Visor option survives to another player', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);
+			check('Bar Stool decal survives to another player', trip.BarStool && trip.BarStool.mine === 2 && trip.BarStool.theirs === 2, trip);
+			check('Hypnotic Visor option survives to another player', trip.HypnoticVisor.mine === 2 && trip.HypnoticVisor.theirs === 2, trip);
 			const custom = await page.evaluate(() => {
 				// An add-on's own setting (AEE Free Draw's CustomDraw, Echo's gradient sliders) on a game item, loaded by another player.
 				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);
@@ -100,7 +94,7 @@ const roundTrip = () => {
 				const p = InventoryGet(other, a.Group.Name)?.Property ?? {};
 				return { CustomDraw: p.CustomDraw, upperBound: p.upperBound };
 			});
-			check('beta: add-on settings on an item survive to another player', custom.CustomDraw === 'drawing' && custom.upperBound === 222, custom);
+			check('add-on settings on an item survive to another player', custom.CustomDraw === 'drawing' && custom.upperBound === 222, custom);
 			const craft = await page.evaluate(() => {
 				window.BCX_Loaded = true;
 				Player.MemberNumber = 1001;
@@ -115,7 +109,7 @@ const roundTrip = () => {
 				delete window.BCX_Loaded;
 				return { property: after?.Property, item: after?.Item, worn: InventoryGet(Player, 'ItemNeck')?.Asset?.Name ?? null, after: after ?? null, sent: bundle.find((b) => b.Group === 'ItemNeck')?.Craft ?? null, chart: ER.chart().find((c) => c.id === 'bcx-curse-loop') };
 			});
-			check('beta: BCX curse fix keeps the full craft when the server echoes a partial one', craft.property === 'Secure' && craft.item === 'LeatherCollar', craft);
+			check('BCX curse fix keeps the full craft when the server echoes a partial one', craft.property === 'Secure' && craft.item === 'LeatherCollar', craft);
 			// LSCG's hook skips the game when the view is already open; R134 rebuilds the view's buttons there.
 			const views = await page.evaluate(() => {
 				const map = ChatRoomViews.Map;
@@ -137,8 +131,8 @@ const roundTrip = () => {
 				ChatRoomActiveView = before;
 				return out;
 			});
-			check('beta: the open map view rebuilds once without LSCG', views.plain === 1, views);
-			check('beta: the open map view rebuilds once behind an LSCG-style hook', views.lscg === 1, views);
+			check('the open map view rebuilds once without LSCG', views.plain === 1, views);
+			check('the open map view rebuilds once behind an LSCG-style hook', views.lscg === 1, views);
 			const sw = await page.evaluate(() => {
 				const out = {};
 				const call = () => { try { return typeof PreferenceArousalIsActive(); } catch (e) { return 'throws'; } };
@@ -149,18 +143,18 @@ const roundTrip = () => {
 				out.pausedVerdict = ER.chart().find((c) => c.id === 'arousal-active').status;
 				return out;
 			});
-			check('beta: a fix runs on Auto', sw.auto === 'boolean', sw);
-			check('beta: a newer extension pauses its fixes on Auto', sw.paused === 'throws', sw);
-			check('beta: the panel opens', await page.evaluate(() => { ER.open(); return !!document.getElementById('er-panel'); }), false);
-			check('beta: the panel shows the pause', await page.evaluate(() => /paused by ER: WCE updated to 9\.9\.9/.test(document.getElementById('er-panel').textContent)), false);
+			check('a fix runs on Auto', sw.auto === 'boolean', sw);
+			check('a newer extension pauses its fixes on Auto', sw.paused === 'throws', sw);
+			check('the panel opens', await page.evaluate(() => { ER.open(); return !!document.getElementById('er-panel'); }), false);
+			check('the panel shows the pause', await page.evaluate(() => /paused by ER: WCE updated to 9\.9\.9/.test(document.getElementById('er-panel').textContent)), false);
 			const echoNewer = await page.evaluate(() => {
 				// An Echo newer than the tested ones: its fixes check for the problem themselves, so they keep running.
 				bcModSdk.registerMod({ name: '服装拓展', fullName: 'Echo-like test', version: '9.9.9' });
 				ER.open();
 				return document.getElementById('er-panel').textContent;
 			});
-			check('beta: self-checking fixes keep running when their extension updates', /checks for the problem itself each time, so it keeps running \(Echo's Clothing Mod updated to 9\.9\.9/.test(echoNewer), echoNewer.slice(0, 300));
-			check('beta: ER is in Preferences > Extensions', await page.evaluate(() => !!PreferenceExtensionsSettings.ER), false);
+			check('self-checking fixes keep running when their extension updates', /checks for the problem itself each time, so it keeps running \(Echo's Clothing Mod updated to 9\.9\.9/.test(echoNewer), echoNewer.slice(0, 300));
+			check('ER is in Preferences > Extensions', await page.evaluate(() => !!PreferenceExtensionsSettings.ER), false);
 			const forcedOn = await page.evaluate(() => {
 				const box = [...document.querySelectorAll('#er-panel .er-ext')].find((b) => b.querySelector('.er-ext-name').textContent === 'WCE');
 				[...box.querySelector('.er-ext-head .er-seg').children].find((b) => b.textContent === 'On').click();
@@ -168,7 +162,7 @@ const roundTrip = () => {
 				try { r = typeof PreferenceArousalIsActive(); } catch { r = 'throws'; }
 				return { r, saved: localStorage.getItem('ER.settings') };
 			});
-			check('beta: forcing an extension On overrides the pause', forcedOn.r === 'boolean' && /"WCE":"on"/.test(forcedOn.saved), forcedOn);
+			check('forcing an extension On overrides the pause', forcedOn.r === 'boolean' && /"WCE":"on"/.test(forcedOn.saved), forcedOn);
 			const forcedOff = await page.evaluate(() => {
 				const box = [...document.querySelectorAll('#er-panel .er-ext')].find((b) => b.querySelector('.er-ext-name').textContent === 'WCE');
 				[...box.querySelector('.er-ext-head .er-seg').children].find((b) => b.textContent === 'Off').click();
@@ -177,10 +171,10 @@ const roundTrip = () => {
 				localStorage.removeItem('ER.settings');
 				return r;
 			});
-			check('beta: forcing an extension Off stops its fixes at once', forcedOff === 'throws', forcedOff);
+			check('forcing an extension Off stops its fixes at once', forcedOff === 'throws', forcedOff);
 			await page.evaluate(() => document.getElementById('er-panel').remove());
-			check('beta: /er is registered',await page.waitForFunction(() => Commands.some((c) => c.Tag === 'er'), { timeout: 5000 }).then(() => true, () => false), false);
-			check('beta: no page errors', errors.length === 0, errors);
+			check('/er is registered',await page.waitForFunction(() => Commands.some((c) => c.Tag === 'er'), { timeout: 5000 }).then(() => true, () => false), false);
+			check('no page errors', errors.length === 0, errors);
 			await page.close();
 		}
 	} finally {
