@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.13.0";
+	const VERSION = "1.13.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -560,6 +560,10 @@
 						for (const [key, value] of Object.entries(item.Property)) {
 							if (value === undefined || omit.has(key) || NEVER.has(key)) continue;
 							if (out && Object.prototype.hasOwnProperty.call(out, key)) continue;
+							// Never anything big: an add-on that keeps a large value (AEE's drawing as picture data) out of
+							// the appearance on purpose must not have it sent with every update.
+							const size = JSON.stringify(value)?.length ?? 0;
+							if (size > 1000 || (typeof value === "string" && value.startsWith("data:"))) continue;
 							if (known(key)) {
 								// The game's own names stay the game's decision on the game's own items.
 								if ((isVanilla ??= vanilla(item.Asset))) continue;
