@@ -147,6 +147,21 @@ const roundTrip = () => {
 				return { nomap: await load('@nomap/Assets/Female3DCG/Eyes/Eyes1.png'), space: await load('%20' + png) };
 			});
 			check('pictures marked @nomap or with %20 before data: load', pictures.nomap === 'loaded' && pictures.space === 'loaded', pictures);
+			const hello = await page.evaluate(() => {
+				// The ER mark: another ER user's hidden hello is answered to them only, with this ER's version.
+				const sent = [];
+				const real = window.ServerSend;
+				window.ServerSend = (m, d) => sent.push([m, d]);
+				try {
+					ChatRoomMessage({ Type: 'Hidden', Content: 'ER', Sender: 5555, Dictionary: [{ er: '1.0.0', reply: true }] });
+				} catch (e) {
+					/* the game may have nothing to do with it outside a room */
+				}
+				window.ServerSend = real;
+				const answer = sent.find((x) => x[0] === 'ChatRoomChat' && x[1].Content === 'ER');
+				return answer ? { to: answer[1].Target, version: answer[1].Dictionary[0].er } : null;
+			});
+			check('another ER user is answered with this version (the ER mark)', hello && hello.to === 5555 && /^\d+\.\d+\.\d+$/.test(hello.version), hello);
 			const saved = await page.evaluate(() => {
 				// Saving: R134 only bundles names on its allowed list; an add-on's own setting must still go out.
 				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);

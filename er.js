@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.14.0";
+	const VERSION = "1.15.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -58,7 +58,7 @@
 	 * Per extension and per fix: "auto" (ER decides, the default), "on" (forced on, even while paused) or "off".
 	 * A fix's own setting wins over its extension's.
 	 * @typedef {"auto" | "on" | "off"} Mode
-	 * @typedef {{ mode: Record<string, Mode>, notifyUpdates: boolean }} Settings
+	 * @typedef {{ mode: Record<string, Mode>, notifyUpdates: boolean, badges: boolean }} Settings
 	 */
 
 	/** @returns {Settings} */
@@ -68,9 +68,9 @@
 			/** @type {Record<string, Mode>} */
 			const mode = {};
 			for (const [k, v] of Object.entries(s.mode && typeof s.mode === "object" ? s.mode : {})) if (v === "on" || v === "off") mode[k] = v;
-			return { mode, notifyUpdates: s.notifyUpdates !== false };
+			return { mode, notifyUpdates: s.notifyUpdates !== false, badges: s.badges !== false };
 		} catch {
-			return { mode: {}, notifyUpdates: true };
+			return { mode: {}, notifyUpdates: true, badges: true };
 		}
 	}
 
@@ -1341,6 +1341,16 @@
 		});
 		updates.append(box, document.createTextNode(" Tell me when a new ER is ready (reload the game to get it)"));
 		body.append(updates);
+		const marks = el("label", "er-option");
+		const markBox = /** @type {HTMLInputElement} */ (el("input"));
+		markBox.type = "checkbox";
+		markBox.checked = settings.badges;
+		markBox.addEventListener("change", () => {
+			settings.badges = markBox.checked;
+			saveSettings();
+		});
+		marks.append(markBox, document.createTextNode(" Show the ER mark on ER users in rooms (their version under the mouse)"));
+		body.append(marks);
 		body.append(
 			el(
 				"p",
@@ -1504,6 +1514,88 @@
 		setInterval(check, 15 * 60 * 1000);
 	}
 
+	// ---- The ER mark: ER users in a room see each other's, with the version under the mouse (like SlimeBeep's slime) ----
+
+	/** Content of the hidden room message ER copies greet each other with: Dictionary [{ er: version, reply? }]. */
+	const ROOM_HELLO = "ER";
+	/** The mark: ER's logo, small. */
+	const BADGE = "https://cdn.jsdelivr.net/gh/Proudkiller0015/extension-repairer@main/icon-64.png";
+	/** @type {Map<number, string>} Member number -> ER version, for people met in a chat room. */
+	const roomVersions = new Map();
+	/** @type {Map<number, number>} Member number -> when we last answered their hello. */
+	const helloAnswered = new Map();
+	/** The room ER last said hello in. */
+	let helloRoom = "";
+
+	/** Says hello to the room (hidden), or answers one person's hello; other ER copies answer with their version. @param {number} [to] */
+	function sendHello(to) {
+		try {
+			w.ServerSend("ChatRoomChat", { Content: ROOM_HELLO, Type: "Hidden", ...(to ? { Target: to } : {}), Dictionary: [{ er: VERSION, ...(to ? {} : { reply: true }) }] });
+		} catch (e) {
+			/* no room, no hello */
+		}
+	}
+
+	/** Draws the mark above an ER user (under SlimeBeep's slime, so both fit), and the version while the mouse is on it. @param {any} C @param {number} x @param {number} y @param {number} zoom */
+	function drawBadge(C, x, y, zoom) {
+		try {
+			if (!settings.badges || !C || typeof C.MemberNumber !== "number" || !w.Player) return;
+			const hidden = game(() => ChatRoomHideIconState);
+			if (typeof hidden === "number" && hidden > 0) return;
+			const version = C.MemberNumber === w.Player.MemberNumber ? VERSION : roomVersions.get(C.MemberNumber);
+			if (!version) return;
+			const [bx, by, size] = [x + 330 * zoom, y + 80 * zoom, 34 * zoom];
+			w.DrawImageResize(BADGE, bx, by, size, size);
+			if (typeof w.MouseIn === "function" && w.MouseIn(bx, by, size, size)) w.DrawTextFit(version, x + 400 * zoom, by + 18 * zoom, 66 * zoom, "#ff6b6b", "black");
+		} catch (e) {
+			/* a mark is never worth an error */
+		}
+	}
+
+	/** The hello listener, the drawing and the once-per-room hello. */
+	function badges() {
+		if (typeof w.ChatRoomMessage === "function") {
+			hook("ChatRoomMessage", 1000, (args, next) => {
+				try {
+					const m = args[0];
+					if (m && m.Type === "Hidden" && m.Content === ROOM_HELLO && typeof m.Sender === "number" && w.Player && m.Sender !== w.Player.MemberNumber) {
+						const d = Array.isArray(m.Dictionary) ? m.Dictionary[0] : null;
+						const v = d && typeof d === "object" ? d.er : null;
+						if (typeof v === "string" && /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v)) {
+							roomVersions.set(m.Sender, v);
+							if (d.reply === true && Date.now() - (helloAnswered.get(m.Sender) || 0) > 10000) {
+								helloAnswered.set(m.Sender, Date.now());
+								sendHello(m.Sender);
+							}
+						}
+					}
+				} catch (e) {
+					/* not ours */
+				}
+				return next(args);
+			});
+		}
+		if (typeof w.ChatRoomCharacterViewDrawOverlay === "function") {
+			hook("ChatRoomCharacterViewDrawOverlay", 0, (args, next) => {
+				const res = next(args);
+				drawBadge(args[0], args[1], args[2], args[3]);
+				return res;
+			});
+		}
+		setInterval(() => {
+			let room = "";
+			try {
+				const data = game(() => ChatRoomData);
+				if (typeof w.ServerPlayerIsInChatRoom === "function" && w.ServerPlayerIsInChatRoom() && data && data.Name) room = String(data.Name);
+			} catch (e) {
+				room = "";
+			}
+			if (room === helloRoom) return;
+			helloRoom = room;
+			if (room) sendHello();
+		}, 1000);
+	}
+
 	function start() {
 		watchForUpdates();
 		standInFixes();
@@ -1511,6 +1603,7 @@
 			if (!w.bcModSdk) return false;
 			sdk = w.bcModSdk.registerMod({ name: "ER", fullName: "ER - Extension Repairer", version: VERSION, repository: REPO });
 			hookFixes();
+			badges();
 			return true;
 		};
 		const commandTimer = setInterval(() => {

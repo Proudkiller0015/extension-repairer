@@ -11,6 +11,7 @@ When a game update removes or changes something an add-on still uses, that add-o
 - **Never talks to the server** and sends nothing anywhere.
 - Type **`/er`** in a chat room (or open Preferences > Extensions) to see every fix, what ER thinks of it, and switch it.
 - **Tells you when an update is ready:** every 15 minutes ER checks for a newer version and says so once (a toast, and a line in the chat); reload to get it. Switch it off with the first box in the `/er` panel.
+- **Shows who else has ER:** in a chat room, ER users get the ER mark above their character (under SlimeBeep's slime), and their ER version shows while the mouse is on it. ER copies find each other with one hidden hello per room. Hide the marks with the second box in the `/er` panel.
 
 ## Install
 
