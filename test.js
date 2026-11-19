@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'default-color-compare', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -162,6 +162,8 @@ const roundTrip = () => {
 				return answer ? { to: answer[1].Target, version: answer[1].Dictionary[0].er } : null;
 			});
 			check('another ER user is answered with this version (the ER mark)', hello && hello.to === 5555 && /^\d+\.\d+\.\d+$/.test(hello.version), hello);
+			const colours = await page.evaluate(() => PropertyData.DefaultColor.isSubset(['#2A2929', '#472C20', 'Default'], ['#2A2929', '#472C20', 'Default'], {}));
+			check('two equal DefaultColor lists match (Oculus Nihili weapons stop resending)', colours === true, colours);
 			const saved = await page.evaluate(() => {
 				// Saving: R134 only bundles names on its allowed list; an add-on's own setting must still go out.
 				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);

@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.15.1";
+	const VERSION = "1.15.2";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -706,6 +706,34 @@
 					return next(args);
 				});
 				return "names an add-on item's options declare are legal on it, so it no longer counts as changed on every load";
+			},
+		);
+
+		treat(
+			{
+				id: "default-color-compare",
+				selfCheck: true,
+				ext: "game",
+				title: "Items whose options set colours kept resending (kicked for rate limit)",
+				why: "R134's DefaultColor property has no comparison of its own, so the game compares a colour list with ===, which is never true for two lists even when every colour matches. An item whose options give each layer a default colour (all of Oculus Nihili's weapons) counted as changed on every load: the game resent the outfit, the server echoed it back as 'invalid', and so on until the server cut the player off with ErrorRateLimited. Kneeling and removing items were lost in the flood. ER compares the lists colour by colour.",
+				patients: ["Oculus Nihili (weapons)", "any add-on item whose options set DefaultColor"],
+			},
+			() => {
+				const entry = game(() => PropertyData?.DefaultColor);
+				if (!entry || typeof entry.isSubset !== "function") return false;
+				// The game compares lists properly itself (a later release): nothing to do.
+				if (entry.isSubset(["#123456", "Default"], ["#123456", "Default"], {}) === true) return false;
+				const fix = currentFix;
+				/** The same colour, or the same colours in the same order. @param {unknown} a @param {unknown} b */
+				const same = (a, b) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]));
+				const original = { compare: entry._compare, isSubset: entry._isSubset };
+				entry._compare = function (/** @type {unknown} */ a, /** @type {unknown} */ b, /** @type {any} */ data) {
+					return fix && active(fix) ? same(a, b) : original.compare ? original.compare.call(this, a, b, data) : a === b;
+				};
+				entry._isSubset = function (/** @type {unknown} */ a, /** @type {unknown} */ b, /** @type {any} */ data) {
+					return fix && active(fix) ? same(a, b) : original.isSubset ? original.isSubset.call(this, a, b, data) : a === b;
+				};
+				return "colour lists are compared colour by colour";
 			},
 		);
 
