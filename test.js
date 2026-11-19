@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -124,6 +124,29 @@ const roundTrip = () => {
 				return { item: asset.Group.Name + '/' + asset.Name, again, kept: item.Property.AllowActivity };
 			});
 			check('an item whose option names an unknown activity stops counting as changed (Echo batons)', rules.again.every((x) => !x) && rules.kept?.[0] === 'ERTestNoSuchActivity', rules);
+			const arousal = await page.evaluate(() => {
+				// WCE's Alternate arousal: an activity raises its enjoyment multiplier; the decay tick must set it back to 1.
+				const before = { flag: Player.BCEArousal, enjoyment: Player.BCEEnjoyment, settings: JSON.stringify(Player.ArousalSettings) };
+				Player.ArousalSettings = { ...(Player.ArousalSettings || {}), Active: 'Hybrid', Progress: 0, ProgressTimer: 0, OrgasmTimer: 0 };
+				Player.BCEArousal = true;
+				Player.BCEEnjoyment = 6;
+				ActivityDecayCharacter(Player);
+				const reset = Player.BCEEnjoyment;
+				ActivitySetArousalTimer(Player, null, 'ItemArms', 25);
+				const timer = Player.ArousalSettings.ProgressTimer;
+				Player.BCEArousal = before.flag;
+				Player.BCEEnjoyment = before.enjoyment;
+				Player.ArousalSettings = JSON.parse(before.settings);
+				return { reset, timer };
+			});
+			check("WCE's Alternate arousal multiplier resets at the decay tick and activities stop at 20", arousal.reset === 1 && arousal.timer === 20, arousal);
+			const pictures = await page.evaluate(async () => {
+				// Echo's @nomap mark and an encoded space before data: reaching the picture cache directly.
+				const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+				const load = (u) => new Promise((res) => { DrawImageCache.get(u); let n = 0; const t = setInterval(() => { const st = DrawImageCache.get(u).state; if (st === 'loaded' || st === 'failed' || ++n > 50) { clearInterval(t); res(st); } }, 100); });
+				return { nomap: await load('@nomap/Assets/Female3DCG/Eyes/Eyes1.png'), space: await load('%20' + png) };
+			});
+			check('pictures marked @nomap or with %20 before data: load', pictures.nomap === 'loaded' && pictures.space === 'loaded', pictures);
 			const saved = await page.evaluate(() => {
 				// Saving: R134 only bundles names on its allowed list; an add-on's own setting must still go out.
 				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);

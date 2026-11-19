@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.13.4";
+	const VERSION = "1.14.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -706,6 +706,142 @@
 					return next(args);
 				});
 				return "names an add-on item's options declare are legal on it, so it no longer counts as changed on every load";
+			},
+		);
+
+		treat(
+			{
+				id: "wce-arousal",
+				ext: "WCE",
+				title: "WCE's Alternate arousal kept rising",
+				why: "WCE's Alternate arousal edits the game's arousal timer by its old text. R134 rewrote that code (ActivityProgressCharacter, ActivityDecayCharacter), so WCE's edits no longer apply: its vibrator rules are gone, the ±20 limit on activities is ±25, and the 'enjoyment' multiplier an activity raises is never set back to 1. Every later arousal step stayed multiplied (up to 6x), so arousal kept climbing on its own. ER puts WCE's rules on R134's new functions, for characters using Alternate arousal only.",
+				patients: ["WCE (Alternate arousal)"],
+			},
+			() => {
+				if (release() < 134 || typeof w.ActivityProgressCharacter !== "function" || typeof w.ActivityDecayCharacter !== "function" || typeof w.ActivitySetArousalTimer !== "function") return false;
+				/** A character WCE runs Alternate arousal for. @param {any} C */
+				const alternate = (C) => !!C && !!C.BCEArousal && !!C.ArousalSettings;
+				// Vibrators, as WCE's TimerProcess edit had it: every vibrator counts, low and medium speeds stop at a cap.
+				hook("ActivityProgressCharacter", 1000, (args, next) => {
+					const C = args[0];
+					try {
+						const s = C && C.ArousalSettings;
+						if (!alternate(C) || s.OrgasmTimer > 0 || !w.PreferenceArousalAtLeast(C, "Hybrid") || s.ProgressTimer !== 0 || !C.IsEgged()) return next(args);
+						let factor = -1;
+						let maxIntensity = 0;
+						let vibes = 0;
+						let noOrgasmVibes = 0;
+						for (const item of C.Appearance) {
+							const zone = w.PreferenceGetZoneFactor(C, item.Asset.ArousalZone) - 2;
+							const intensity = item.Property && item.Property.Intensity;
+							if (!w.InventoryItemHasEffect(item, "Egged", true) || typeof intensity !== "number" || isNaN(intensity) || intensity < 0 || zone < 0) continue;
+							vibes++;
+							if (!w.PreferenceGetZoneOrgasm(C, item.Asset.ArousalZone)) noOrgasmVibes++;
+							maxIntensity = Math.max(intensity, maxIntensity);
+							factor += intensity + zone + 1;
+						}
+						if (factor >= 0) {
+							const fetish = w.ActivityFetishFactor(C);
+							if (fetish > 0) factor += Math.ceil(fetish / 3);
+							if (fetish < 0) factor += Math.floor(fetish / 3);
+						}
+						let maxProgress = maxIntensity === 0 ? 40 + vibes * 5 : maxIntensity === 1 ? 70 + vibes * 5 : vibes === 0 || vibes > noOrgasmVibes ? 100 : 95;
+						let step = 2;
+						if (factor < 0) {
+							w.ActivityVibratorLevel(C, 0);
+							return;
+						}
+						if (factor < 1) {
+							w.ActivityVibratorLevel(C, 1);
+							maxProgress = Math.min(maxProgress, 35);
+							step = 5;
+						} else if (factor < 2) {
+							w.ActivityVibratorLevel(C, 1);
+							maxProgress = Math.min(maxProgress, 65);
+							step = 4;
+						} else if (factor < 3) {
+							maxProgress = Math.min(maxProgress, 95);
+							step = 3;
+							w.ActivityVibratorLevel(C, 2);
+						} else {
+							w.ActivityVibratorLevel(C, Math.min(4, Math.floor(factor)));
+						}
+						if (maxProgress === 100) maxProgress = 105;
+						const count = game(() => TimerLastArousalProgressCount) || 0;
+						if (count % step === 0 && maxProgress - s.Progress > 0) {
+							C.BCEEnjoyment = 1 + (factor > 1 ? Math.round(1.5 * Math.log2(factor)) : 0);
+							w.ActivityTimerProgress(C, 1);
+						}
+						return;
+					} catch (e) {
+						return next(args);
+					}
+				});
+				// The reset WCE put at the decay tick: without it, the multiplier an activity set stayed forever.
+				hook("ActivityDecayCharacter", 1000, (args, next) => {
+					const C = args[0];
+					try {
+						if (alternate(C) && w.PreferenceArousalAtLeast(C, "Hybrid")) C.BCEEnjoyment = 1;
+					} catch (e) {
+						// Leave it to the game.
+					}
+					return next(args);
+				});
+				// Activities: ±20 instead of the game's ±25. Inside WCE's own hook, which reads the Progress it was given.
+				hook("ActivitySetArousalTimer", -10, (args, next) => {
+					const [C, , , progress] = args;
+					if (alternate(C) && typeof progress === "number") {
+						const half = (Number(C.ArousalSettings.ProgressTimer) || 0) / 2;
+						const combined = Math.round(half + progress);
+						const limited = Math.max(-20, Math.min(20, combined));
+						// The game rounds ProgressTimer / 2 + Progress: hand it what comes out at exactly the limit.
+						if (limited !== combined) args[3] = limited - half;
+					}
+					return next(args);
+				});
+				return "WCE's Alternate arousal rules run on R134's arousal code";
+			},
+		);
+
+		treat(
+			{
+				id: "image-addresses",
+				selfCheck: true,
+				ext: "Echo",
+				title: "Some pictures failed to load (404 @nomap, 414 data:)",
+				why: "Echo marks some body pictures '@nomap/' and removes the mark in the game's drawing functions; an add-on that loads pictures straight from the game's picture cache asks the server for '@nomap/Assets/...' and gets a 404. Another add-on hands over pictures as ' data:image...' with a space in front, which the browser treats as a file path (414). ER removes both before the picture is fetched.",
+				patients: ["Echo (beta)", "any add-on that loads pictures by address"],
+			},
+			() => {
+				if (typeof w.CommonFetch !== "function") return false;
+				/** The address the picture really has, or null when it is fine. @param {string} url */
+				const repair = (url) => {
+					let out = url;
+					const embedded = /^(?:.*?\/)?(?:\s|%20)+(data:image\/)/.exec(out.slice(0, 400));
+					if (embedded) out = out.slice(embedded.index + embedded[0].length - embedded[1].length);
+					if (out.startsWith("@nomap/")) out = out.slice(7);
+					else if (out.indexOf("/@nomap/") !== -1 && !out.startsWith("data:")) out = out.replace("/@nomap/", "/");
+					return out !== url ? out : null;
+				};
+				hook("CommonFetch", 1000, (args, next) => {
+					try {
+						const target = args[0];
+						if (typeof target === "string") {
+							const fixed = repair(target);
+							if (fixed) args[0] = fixed;
+						} else if (target instanceof URL) {
+							const fixed = repair(target.href);
+							if (fixed) args[0] = fixed;
+						} else if (typeof Request !== "undefined" && target instanceof Request) {
+							const fixed = repair(target.url);
+							if (fixed) args[0] = new Request(fixed, target);
+						}
+					} catch (e) {
+						// Fetch what was asked.
+					}
+					return next(args);
+				});
+				return "pictures with Echo's @nomap mark or a space before data: load";
 			},
 		);
 
