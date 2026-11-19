@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.15.0";
+	const VERSION = "1.15.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -1536,7 +1536,7 @@
 		}
 	}
 
-	/** Draws the mark above an ER user (under SlimeBeep's slime, so both fit), and the version while the mouse is on it. @param {any} C @param {number} x @param {number} y @param {number} zoom */
+	/** Draws the mark above an ER user, right of SlimeBeep's slime, and the version while the mouse is on it. @param {any} C @param {number} x @param {number} y @param {number} zoom */
 	function drawBadge(C, x, y, zoom) {
 		try {
 			if (!settings.badges || !C || typeof C.MemberNumber !== "number" || !w.Player) return;
@@ -1544,9 +1544,12 @@
 			if (typeof hidden === "number" && hidden > 0) return;
 			const version = C.MemberNumber === w.Player.MemberNumber ? VERSION : roomVersions.get(C.MemberNumber);
 			if (!version) return;
-			const [bx, by, size] = [x + 330 * zoom, y + 80 * zoom, 34 * zoom];
+			const [bx, by, size] = [x + 368 * zoom, y + 42 * zoom, 34 * zoom];
+			const mouse = typeof w.MouseIn === "function";
+			// SlimeBeep writes its version right of its slime (x+330), over this spot: step aside while it does.
+			if (mouse && w.MouseIn(x + 330 * zoom, by, size, size)) return;
 			w.DrawImageResize(BADGE, bx, by, size, size);
-			if (typeof w.MouseIn === "function" && w.MouseIn(bx, by, size, size)) w.DrawTextFit(version, x + 400 * zoom, by + 18 * zoom, 66 * zoom, "#ff6b6b", "black");
+			if (mouse && w.MouseIn(bx, by, size, size)) w.DrawTextFit(version, x + 440 * zoom, by + 18 * zoom, 66 * zoom, "#ff6b6b", "black");
 		} catch (e) {
 			/* a mark is never worth an error */
 		}
