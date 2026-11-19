@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
-const LIVE = 'https://www.bondageprojects.elementfx.com/R133/BondageClub/';
+const LIVE = 'https://www.bondageprojects.elementfx.com/R134/BondageClub/';
 const MODSDK = 'https://cdn.jsdelivr.net/npm/bondage-club-mod-sdk@1.2.0/dist/bcmodsdk.js';
 const BCX = process.env.BCX_URL || 'https://jomshir98.github.io/bondage-club-extended/devel/bcx.js';
 const ECHO = 'https://sugarchain-studio.github.io/echo-clothing-ext/bc-cloth.js';

@@ -7,7 +7,7 @@ const path = require('path');
 const puppeteer = require(process.env.PUPPETEER || 'puppeteer-core');
 
 const BUILDS = {
-	live: 'https://www.bondageprojects.elementfx.com/R133/BondageClub/',
+	live: 'https://www.bondageprojects.elementfx.com/R134/BondageClub/',
 	beta: 'https://www.bondageprojects.elementfx.com/R133/2684902840521/',
 };
 const MANIFEST = 'https://sidiousious.gitlab.io/bc-addon-loader/manifest.json';
