@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -109,6 +109,21 @@ const roundTrip = () => {
 				return { ended: !!window.__erEnded, error };
 			});
 			check('a minigame return given by name runs (LSCG sleepy drink)', mini.ended && !mini.error, mini);
+			const rules = await page.evaluate(() => {
+				// Echo's batons: an option allows an activity the game does not have; R134 strips it and the option puts it back.
+				const C = CharacterLoadNPC('NPC_ERRules');
+				CharacterAppearanceSetDefault(C);
+				const asset = Asset.find((a) => a.Archetype === 'typed' && a.Group.AllowNone && a.Group.Category === 'Item' && (ExtendedItemGetData(a, 'typed')?.options || []).length > 1);
+				InventoryWear(C, asset.Name, asset.Group.Name);
+				const item = InventoryGet(C, asset.Group.Name);
+				const option = ExtendedItemGatherOptions(item)[0];
+				option.Property = { ...option.Property, AllowActivity: ['ERTestNoSuchActivity'] };
+				item.Property = { ...item.Property, AllowActivity: ['ERTestNoSuchActivity'] };
+				ExtendedItemInit(C, item, false, false);
+				const again = [1, 2, 3].map(() => ExtendedItemInit(C, item, false, false));
+				return { item: asset.Group.Name + '/' + asset.Name, again, kept: item.Property.AllowActivity };
+			});
+			check('an item whose option names an unknown activity stops counting as changed (Echo batons)', rules.again.every((x) => !x) && rules.kept?.[0] === 'ERTestNoSuchActivity', rules);
 			const saved = await page.evaluate(() => {
 				// Saving: R134 only bundles names on its allowed list; an add-on's own setting must still go out.
 				const a = Asset.find((x) => x.Group.Name === 'Hat' && !x.Extended);

@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.13.3";
+	const VERSION = "1.13.4";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -45,7 +45,7 @@
 	 */
 	const EXTENSIONS = {
 		game: { label: "Game changes (help every add-on)" },
-		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6"] },
+		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6", "1.136.7"] },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
 		BCX: { label: "BCX", mods: ["BCX"], tested: ["1.1.23", "1.1.24", "1.1.25"] },
 		LSCG: { label: "LSCG", mods: ["LSCG"], tested: "0.9.16" },
@@ -658,6 +658,54 @@
 					});
 				}
 				return "an item's difficulty and height are what its options give, however often it loads";
+			},
+		);
+
+		treat(
+			{
+				id: "option-rules",
+				selfCheck: true,
+				ext: "Echo",
+				title: "Some add-on items counted as changed every time they loaded (lag, resends)",
+				why: "R134 checks an item's settings against its rules on every load and strips names it does not know; the item's option then puts them straight back, so the item counts as changed every time and is sent to the room again. Echo's batons (R18Baton, 警棍) allow an activity the game does not have (PenetrateItem), so wearing one kept resending the outfit. ER accepts the names an add-on item's own options declare.",
+				patients: ["Echo", "any add-on item whose options name activities, effects... the game does not have"],
+			},
+			() => {
+				if (release() < 134 || typeof w.ExtendedItemInit !== "function" || typeof w.ItemPropertiesValidate !== "function") return false;
+				const gather = () => game(() => ExtendedItemGatherOptions);
+				if (typeof gather() !== "function") return false;
+				/** Option and baseline property objects already looked at. */
+				const seen = new WeakSet();
+				/** Makes the names one option of an item sets legal. @param {any} C @param {any} asset @param {any} props */
+				const accept = (C, asset, props) => {
+					if (!props || typeof props !== "object" || seen.has(props)) return;
+					seen.add(props);
+					const check = w.ItemPropertiesValidate(JSON.parse(JSON.stringify(props)), asset, { C, ignoreErrors: ["TypeRecord"] });
+					if (!check || check.status === "ok") return;
+					for (const key of Object.keys(check.errorDescriptions || {})) {
+						const rules = game(() => PropertyData?.[key]);
+						const known = rules && rules.metaData && rules.metaData.valueSet;
+						// Only lists of names (activities, effects...): the item declares them, so they are legal on it.
+						if (known instanceof Set && Array.isArray(props[key])) for (const v of props[key]) if (typeof v === "string") known.add(v);
+					}
+				};
+				hook("ExtendedItemInit", 1001, (args, next) => {
+					const [C, item] = args;
+					try {
+						// Every extended item, the game's own too: its options always pass (checked once each), and some add-ons
+						// list their items among the game's own.
+						if (item && item.Asset && item.Asset.Extended) {
+							for (const o of gather()(item) || []) {
+								accept(C, item.Asset, o && o.Property);
+								accept(C, item.Asset, o && o.ParentData && o.ParentData.baselineProperty);
+							}
+						}
+					} catch (e) {
+						// Leave the item to the game.
+					}
+					return next(args);
+				});
+				return "names an add-on item's options declare are legal on it, so it no longer counts as changed on every load";
 			},
 		);
 
