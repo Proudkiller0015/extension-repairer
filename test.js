@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'default-color-compare', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'default-color-compare', 'portal-code', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -63,6 +63,17 @@ const roundTrip = () => {
 				ChatSearchSpace = 'Asylum';
 				return { inRoom, lobby: ChatRoomSpace };
 			});
+			const portal = await page.evaluate(() => {
+				CharacterAppearanceSetDefault(Player);
+				InventoryWear(Player, 'PortalTablet', 'ItemHandheld');
+				const inits = [1, 2].map(() => ExtendedItemInit(Player, InventoryGet(Player, 'ItemHandheld'), false, false));
+				const entry = PropertyData.PortalLinkCode;
+				const out = { inits, empty: entry.validate('', undefined, '').status, good: entry.validate('0a1b2c3d', undefined, '').status, bad: entry.validate('zz', undefined, '').status };
+				InventoryRemove(Player, 'ItemHandheld', false);
+				return out;
+			});
+			check('a Portal Tablet with no link code stops resending', portal.inits.every((r) => r === false) && portal.empty === 'ok', portal);
+			check('Portal Tablet codes are still checked (good ok, bad refused)', portal.good === 'ok' && portal.bad !== 'ok', portal);
 			check('ChatRoomSpace/ChatRoomGame follow the room', space.inRoom[0] === 'M' && space.inRoom[1] === 'LARP', space);
 			check('ChatRoomSpace follows the lobby outside a room', space.lobby === 'Asylum', space);
 			check('InformationSheetSecondScreenRun can be hooked', await page.evaluate(() => {

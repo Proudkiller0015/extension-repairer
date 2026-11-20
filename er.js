@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.15.2";
+	const VERSION = "1.16.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -734,6 +734,30 @@
 					return fix && active(fix) ? same(a, b) : original.isSubset ? original.isSubset.call(this, a, b, data) : a === b;
 				};
 				return "colour lists are compared colour by colour";
+			},
+		);
+
+		treat(
+			{
+				id: "portal-code",
+				selfCheck: true,
+				ext: "game",
+				title: "Holding a Portal Tablet with no link code kept resending (kicked for rate limit)",
+				why: "R134's Portal Tablet starts with an empty link code, but the game's own check only accepts an 8-character code. A tablet nobody set a code on fails that check on every load: the game logs 'Sanitizing invalid ... PortalTablet', puts the same empty code back, resends the outfit, the server echoes it as 'invalid', and so on until ErrorRateLimited. ER lets the empty code (no link set) through; any other code is still checked by the game.",
+				patients: ["anyone holding a Portal Tablet with no link code"],
+			},
+			() => {
+				const entry = game(() => PropertyData?.PortalLinkCode);
+				if (!entry || typeof entry.validate !== "function") return false;
+				// The game accepts an empty code itself (a later release): nothing to do.
+				if (entry.validate("", undefined, "").status === "ok") return false;
+				const fix = currentFix;
+				const original = entry._validate;
+				entry._validate = function (/** @type {unknown} */ prop, /** @type {any} */ itemData, /** @type {any} */ defaults) {
+					if (prop === "" && fix && active(fix)) return { status: "ok", value: "" };
+					return original.call(this, prop, itemData, defaults);
+				};
+				return "an empty link code (no link set) passes the game's check";
 			},
 		);
 
