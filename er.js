@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.16.0";
+	const VERSION = "1.17.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -930,6 +930,37 @@
 					return next(args);
 				});
 				return "a minigame's return given by name works again";
+			},
+		);
+
+		treat(
+			{
+				id: "missing-property",
+				selfCheck: true,
+				ext: "game",
+				title: "Wiggling ears or wagging a tail with BCAR crashed the game",
+				why: "R134's vibrator screen effect reads item.Property.Effect on every worn item, every frame, and expects every item to have a Property. BCAR's ear wiggle and tail wag put back the Property they saved, and when nothing was saved that is 'undefined', so players with the vibrator screen effect on (Solid or Animated) got 'item.Property is undefined' on every frame. ER gives an item with no Property an empty one before the game redraws it.",
+				patients: ["BCAR (ear wiggle, tail wag)", "any add-on that clears an item's Property"],
+			},
+			() => {
+				if (release() < 134) return false;
+				/** @param {any} C */
+				const fill = (C) => {
+					if (!C || !Array.isArray(C.Appearance)) return;
+					for (const item of C.Appearance) if (item && item.Property == null) item.Property = {};
+				};
+				const hooked = [
+					hook("CharacterRefresh", 1000, (args, next) => {
+						fill(args[0]);
+						return next(args);
+					}),
+					hook("ChatRoomVibrationScreenFilter", 1000, (args, next) => {
+						fill(args[3]);
+						return next(args);
+					}),
+				];
+				if (!hooked.some(Boolean)) return false;
+				return "an item with no Property gets an empty one before it is drawn";
 			},
 		);
 
