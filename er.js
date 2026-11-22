@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.18.0";
+	const VERSION = "1.19.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -1415,6 +1415,7 @@
 #er-panel .er-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid #ead9d9; font-size: 13px; color: #5d5555; }
 #er-panel .er-foot button { margin-left: auto; background: #d81e1e; color: #fff; border: 0; border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; }
 #er-panel a { color: #d81e1e; }
+#er-panel .er-report { width: 100%; height: 50vh; font: 12px/1.4 ui-monospace, Consolas, monospace; white-space: pre; resize: vertical; margin-bottom: 8px; }
 `;
 
 	/**
@@ -1457,7 +1458,7 @@
 	/** Draws (or redraws) the panel's contents. */
 	function renderPanel() {
 		const panel = document.getElementById(PANEL_ID);
-		if (!panel) return;
+		if (!panel || panel.dataset.report) return;
 		const body = /** @type {HTMLElement} */ (panel.querySelector(".er-body"));
 		const scroll = body.scrollTop;
 		body.replaceChildren();
@@ -1523,8 +1524,12 @@
 		document.getElementById(`${PANEL_ID}-style`)?.remove();
 	}
 
-	/** Opens the panel. @param {() => void} [onClose] */
-	function openPanel(onClose) {
+	/**
+	 * Opens the panel, or with `report`, the same window showing a report to copy.
+	 * @param {() => void} [onClose]
+	 * @param {string} [report]
+	 */
+	function openPanel(onClose, report) {
 		closePanel();
 		const style = el("style");
 		style.id = `${PANEL_ID}-style`;
@@ -1555,15 +1560,182 @@
 		link.setAttribute("href", REPO);
 		link.setAttribute("target", "_blank");
 		link.setAttribute("rel", "noopener");
+		panel.append(head, body, foot);
+		// Keys typed in the panel must not reach the game.
+		panel.addEventListener("keydown", (e) => e.stopPropagation());
+		if (report != null) {
+			panel.dataset.report = "1";
+			body.append(el("p", "er-help", "What ER saw while it watched. Nothing was sent anywhere: copy it and give it to whoever is helping you. It shows your worn items (names, colours, crafts) and nothing else."));
+			const box = /** @type {HTMLTextAreaElement} */ (el("textarea", "er-report"));
+			box.readOnly = true;
+			box.value = report;
+			body.append(box);
+			const copy = /** @type {HTMLButtonElement} */ (el("button", undefined, "Copy"));
+			copy.type = "button";
+			copy.addEventListener("click", async () => {
+				try {
+					await navigator.clipboard.writeText(report);
+				} catch {
+					box.select();
+					document.execCommand("copy");
+				}
+				copy.textContent = "Copied";
+			});
+			foot.append(el("span", undefined, "/er watch records again; /er opens the fixes."), copy);
+			document.body.append(panel);
+			return;
+		}
 		const reload = /** @type {HTMLButtonElement} */ (el("button", undefined, "Reload to apply"));
 		reload.type = "button";
 		reload.addEventListener("click", () => location.reload());
 		foot.append(el("span", undefined, "Most switches act at once; fixes that start with the game need a reload."), link, reload);
-		panel.append(head, body, foot);
-		// Keys typed in the panel must not reach the game.
-		panel.addEventListener("keydown", (e) => e.stopPropagation());
 		document.body.append(panel);
 		renderPanel();
+	}
+
+	// ---- /er watch: what keeps changing, for players who cannot use the console ----
+
+	/** Set while a recording runs. */
+	let watching = false;
+
+	/**
+	 * Records the player's worn items for a while: every change per group, each reload of the player's appearance
+	 * and each update the player sends, the room's messages about curses, and the game's warnings about invalid
+	 * appearances. Then shows it as text to copy. A loop shows up as a group flipping between two states.
+	 * @param {number} [seconds]
+	 * @returns {Promise<string | null>} The report, or null when a recording was already running.
+	 */
+	async function watch(seconds = 20) {
+		if (watching) return null;
+		watching = true;
+		const started = Date.now();
+		const stamp = () => `${((Date.now() - started) / 1000).toFixed(2)}s`;
+		const say = (/** @type {string} */ text) => {
+			if (game(() => CurrentScreen) === "ChatRoom" && typeof w.ChatRoomSendLocal === "function") w.ChatRoomSendLocal(`✚ ${text}`);
+		};
+		/** One group's item as text. @param {any} item */
+		const describe = (item) => {
+			if (!item) return "(nothing)";
+			const text = JSON.stringify({ Name: item.Asset?.Name, Color: item.Color, Difficulty: item.Difficulty, Property: item.Property, Craft: item.Craft });
+			return text.length > 3000 ? `${text.slice(0, 3000)}... (${text.length} chars)` : text;
+		};
+		const states = () => {
+			/** @type {Map<string, string>} */
+			const out = new Map();
+			for (const item of w.Player?.Appearance ?? []) if (item?.Asset) out.set(item.Asset.Group.Name, describe(item));
+			return out;
+		};
+		const first = states();
+		/** @type {Map<string, string[]>} */
+		const changes = new Map();
+		let last = first;
+		const look = (/** @type {string} */ why) => {
+			const now = states();
+			for (const group of new Set([...last.keys(), ...now.keys()])) {
+				const b = now.get(group) ?? "(nothing)";
+				if ((last.get(group) ?? "(nothing)") === b) continue;
+				if (!changes.has(group)) changes.set(group, []);
+				changes.get(group)?.push(`${stamp()} ${why}: ${b}`);
+			}
+			last = now;
+		};
+		const events = { sent: 0, reloads: 0 };
+		/** @type {string[]} */
+		const lines = [];
+		/** @type {(() => void)[]} */
+		const undo = [];
+		const isPlayer = (/** @type {any} */ C) => !!C && C === w.Player;
+		if (sdk) {
+			try {
+				undo.push(
+					sdk.hookFunction("ChatRoomCharacterUpdate", -10000, (/** @type {any[]} */ args, /** @type {(a: any[]) => any} */ next) => {
+						if (isPlayer(args[0])) {
+							events.sent++;
+							look("before sending");
+						}
+						return next(args);
+					}),
+					sdk.hookFunction("ServerAppearanceLoadFromBundle", -10000, (/** @type {any[]} */ args, /** @type {(a: any[]) => any} */ next) => {
+						const res = next(args);
+						if (isPlayer(args[0])) {
+							events.reloads++;
+							look("after a reload");
+						}
+						return res;
+					}),
+					sdk.hookFunction("ChatRoomMessage", -10000, (/** @type {any[]} */ args, /** @type {(a: any[]) => any} */ next) => {
+						try {
+							const data = args[0];
+							const text = typeof data?.Content === "string" ? data.Content : "";
+							if (data && data.Type !== "Hidden" && /curse|protection|BCX/i.test(text)) lines.push(`${stamp()} chat ${data.Type} from ${data.Sender}: ${text.slice(0, 300)}`);
+						} catch {
+							// A message we cannot read is not worth breaking the chat for.
+						}
+						return next(args);
+					}),
+				);
+			} catch (e) {
+				lines.push(`(could not hook: ${String((e && e.message) || e)})`);
+			}
+		}
+		const consoleWas = { warn: console.warn, error: console.error };
+		for (const kind of /** @type {const} */ (["warn", "error"])) {
+			console[kind] = function (/** @type {any[]} */ ...a) {
+				try {
+					const text = a
+						.map((x) => {
+							if (typeof x === "string") return x;
+							try {
+								return JSON.stringify(x);
+							} catch {
+								return String(x);
+							}
+						})
+						.join(" ");
+					if (/sanitiz|invalid appearance|BCX|curse|rate/i.test(text)) lines.push(`${stamp()} console.${kind}: ${text.slice(0, 400)}`);
+				} catch {
+					// Never let the recorder break a warning.
+				}
+				return consoleWas[kind].apply(this, a);
+			};
+		}
+		say(`ER is watching your items for ${seconds} seconds. Carry on as normal; a window with the report opens when it is done.`);
+		const poll = setInterval(() => look("seen"), 200);
+		try {
+			await new Promise((r) => setTimeout(r, seconds * 1000));
+		} finally {
+			clearInterval(poll);
+			look("seen");
+			for (const u of undo) {
+				try {
+					u();
+				} catch {
+					// Already gone.
+				}
+			}
+			console.warn = consoleWas.warn;
+			console.error = consoleWas.error;
+			watching = false;
+		}
+		const mods = (w.bcModSdk?.getModsInfo?.() ?? []).map((/** @type {any} */ m) => `${m.name} ${m.version}`).join(", ");
+		const bcxFix = chart.find((c) => c.id === "bcx-curse-loop");
+		const out = [
+			`ER ${VERSION} watch, ${seconds} s, game ${game(() => GameVersion) ?? "?"}, ${new Date().toISOString()}`,
+			`Mods: ${mods || "none"}`,
+			`Switches set by hand: ${Object.entries(settings.mode).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}`,
+			bcxFix ? `BCX curse fix: ${bcxFix.status}; ${verdict(bcxFix).text}` : "BCX curse fix: not on the chart",
+			`Updates sent: ${events.sent}, appearance reloads: ${events.reloads}`,
+			"",
+			changes.size ? "Items that changed (first line is how it started):" : "No worn item changed while ER watched.",
+		];
+		for (const [group, list] of changes) {
+			out.push(`== ${group} (${list.length} change${list.length === 1 ? "" : "s"})`, `start: ${first.get(group) ?? "(nothing)"}`, ...list.slice(0, 40));
+			if (list.length > 40) out.push(`... ${list.length - 40} more`);
+		}
+		if (lines.length) out.push("", "Messages and warnings:", ...lines.slice(0, 60));
+		const report = out.join("\n");
+		openPanel(undefined, report);
+		return report;
 	}
 
 	/** ER's logo, from the repo (the same files the install page uses). */
@@ -1600,8 +1772,11 @@
 		w.CommandCombine([
 			{
 				Tag: "er",
-				Description: ": ER - Extension Repairer: open the fixes panel",
-				Action: () => openPanel(),
+				Description: ": ER - Extension Repairer: open the fixes panel (/er watch: record what keeps changing on you, to copy and send)",
+				Action: (/** @type {string} */ args) => {
+					if (/^\s*watch\b/i.test(String(args ?? ""))) watch();
+					else openPanel();
+				},
 			},
 		]);
 	}
@@ -1766,6 +1941,8 @@
 		standIns: () => [...standIns],
 		/** Opens the fixes panel. */
 		open: () => openPanel(),
+		/** Records what changes on the player's items for a while, then shows a report to copy (/er watch). */
+		watch: (/** @type {number | undefined} */ seconds) => watch(seconds),
 	};
 
 	/**

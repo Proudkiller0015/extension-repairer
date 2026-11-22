@@ -329,6 +329,26 @@ const roundTrip = () => {
 			});
 			check('forcing an extension Off stops its fixes at once', forcedOff === 'throws', forcedOff);
 			await page.evaluate(() => document.getElementById('er-panel').remove());
+			const watched = await page.evaluate(async () => {
+				// /er watch: a curse-style change and a reload while it records show up in the report.
+				CharacterAppearanceSetDefault(Player);
+				InventoryWear(Player, 'PaddedBeltCollar', 'ItemNeck');
+				const consoleWas = console.warn;
+				const running = Commands.find((c) => c.Tag === 'er').Action('watch');
+				const report = ER.watch(1.5);
+				setTimeout(() => {
+					InventoryGet(Player, 'ItemNeck').Color = ['#ff0000'];
+					console.warn('Sanitizing invalid appearance test');
+					ServerAppearanceLoadFromBundle(Player, 'Female3DCG', ServerAppearanceBundle(Player.Appearance), Player.MemberNumber);
+				}, 400);
+				await new Promise((r) => setTimeout(r, 21000));
+				const text = await report;
+				const box = document.querySelector('#er-panel .er-report');
+				const out = { second: text, shown: !!box, restored: console.warn === consoleWas, first: box ? box.value : null };
+				document.getElementById('er-panel')?.remove();
+				return out;
+			});
+			check('/er watch records a changed item, the reload and the warning, then shows the report', watched.shown && watched.second === null && /== ItemNeck/.test(watched.first) && /after a reload|seen/.test(watched.first) && /appearance reloads: [1-9]/.test(watched.first) && /Sanitizing invalid appearance test/.test(watched.first) && watched.restored, watched);
 			check('/er is registered',await page.waitForFunction(() => Commands.some((c) => c.Tag === 'er'), { timeout: 5000 }).then(() => true, () => false), false);
 			check('no page errors', errors.length === 0, errors);
 			await page.close();
