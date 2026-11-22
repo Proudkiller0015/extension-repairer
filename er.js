@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.17.0";
+	const VERSION = "1.18.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -34,7 +34,7 @@
 
 	/**
 	 * One line on the chart per fix.
-	 * @typedef {{ id: string, ext: string, title: string, why: string, patients: string[], selfCheck?: boolean, status: "treated" | "healthy" | "failed" | "off", detail?: string }} ChartEntry
+	 * @typedef {{ id: string, ext: string, title: string, why: string, patients: string[], selfCheck?: boolean, fixedIn?: string, status: "treated" | "healthy" | "failed" | "off", detail?: string }} ChartEntry
 	 */
 
 	/**
@@ -45,10 +45,10 @@
 	 */
 	const EXTENSIONS = {
 		game: { label: "Game changes (help every add-on)" },
-		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6", "1.136.7"] },
+		Echo: { label: "Echo's Clothing Mod", mods: ["服装拓展"], tested: ["1.136.5", "1.136.6", "1.136.7", "1.136.8"] },
 		WCE: { label: "WCE", mods: ["WCE"], tested: "6.3.20" },
 		BCX: { label: "BCX", mods: ["BCX"], tested: ["1.1.23", "1.1.24", "1.1.25"] },
-		LSCG: { label: "LSCG", mods: ["LSCG"], tested: "0.9.16" },
+		LSCG: { label: "LSCG", mods: ["LSCG"], tested: ["0.9.16", "0.9.19"] },
 	};
 
 	/** Where the player's choices are kept (per browser, read before login so fixes can start early). */
@@ -125,12 +125,25 @@
 	}
 
 	/**
+	 * The installed version of a fix's extension when that version fixed the problem itself (the fix's `fixedIn`),
+	 * else null.
+	 * @param {{ ext: string, fixedIn?: string }} fix
+	 * @returns {string | null}
+	 */
+	function fixedByExtension(fix) {
+		if (!fix.fixedIn) return null;
+		const v = installedVersion(fix.ext);
+		return v && !newer(fix.fixedIn, baseVersion(v)) ? v : null;
+	}
+
+	/**
 	 * Whether a fix should act right now: the player's forced choice, else ER's own call.
-	 * @param {{ id: string, ext: string }} fix
+	 * @param {{ id: string, ext: string, fixedIn?: string }} fix
 	 */
 	const active = (fix) => {
 		const f = forced(fix);
 		if (f !== "auto") return f === "on";
+		if (fixedByExtension(fix)) return false;
 		// A fix that checks for the problem itself every time keeps running when its extension updates: if the update
 		// fixed the problem, the fix simply finds nothing to do.
 		return !!fix.selfCheck || !pausedReason(fix.ext);
@@ -422,8 +435,8 @@
 				// It only steps in when the server actually sends a partial craft back, so a BCX update cannot make it wrong.
 				selfCheck: true,
 				ext: "BCX",
-				title: "BCX curses on crafted items looped",
-				why: "Since R133 the server sends crafted items back with only part of their craft data; BCX curses compare the full craft, see a change, \"undo all changes\" and loop until BCX's protection switches the curse off.",
+				title: "BCX curses on crafted items and clothing looped",
+				why: "Since R133 the server sends crafted items back with only part of their craft data; BCX curses compare the full craft, see a change, \"undo all changes\" and loop until BCX's protection switches the curse off. Clothing and body curses (ears, tail straps, body markings...) loop the same way when the curse saved a difficulty of 0: BCX puts the 0 back, the game leaves it out of what it sends, the reload drops it, and the next check sees a change again, until the server cuts the player off with ErrorRateLimited. ER keeps the full craft and that 0 on the player's own items. BCX's dev build of 21 Nov 2026 stops cursing the difficulty of clothing; this part then finds nothing to do.",
 				patients: ["BCX"],
 			},
 			() => {
@@ -459,14 +472,39 @@
 						if (item.Craft.Partial === undefined) delete item.Craft.Partial;
 					}
 				};
+				/**
+				 * Clothing and body items carrying a difficulty of 0, which only a BCX curse puts there (the game leaves a
+				 * 0 out of what it sends, so a reload drops it).
+				 * @param {any[]} appearance @param {string[]} [groups]
+				 */
+				const zeroes = (appearance, groups) => {
+					/** @type {Map<string, string>} */
+					const saved = new Map();
+					for (const item of appearance || []) {
+						if (!item?.Asset || item.Asset.Group.Category !== "Appearance" || item.Property?.Difficulty !== 0) continue;
+						const group = item.Asset.Group.Name;
+						if (!groups || groups.includes(group)) saved.set(group, item.Asset.Name);
+					}
+					return saved;
+				};
+				/** Puts the 0 back on the same item when the reload dropped it. @param {any[]} appearance @param {Map<string, string>} saved */
+				const restoreZeroes = (appearance, saved) => {
+					for (const item of appearance || []) {
+						if (!item?.Asset || saved.get(item.Asset.Group.Name) !== item.Asset.Name) continue;
+						if (!item.Property || typeof item.Property !== "object") item.Property = {};
+						if (!("Difficulty" in item.Property)) item.Property.Difficulty = 0;
+					}
+				};
 				const bcx = () => !!w.BCX_Loaded;
 				// Full appearance reloads: the echo of the player's own appearance, room syncs, refreshes.
 				hook("ServerAppearanceLoadFromBundle", 0, (args, next) => {
 					const C = args[0];
 					if (!bcx() || C !== w.Player || args[4]) return next(args);
 					const saved = snapshot(C.Appearance);
+					const zero = zeroes(C.Appearance);
 					const res = next(args);
 					if (saved.size) restore(C.Appearance, saved);
+					if (zero.size) restoreZeroes(C.Appearance, zero);
 					return res;
 				});
 				// One item changed by someone else (e.g. tightening the cursed collar).
@@ -475,11 +513,13 @@
 					const group = data?.Item?.Group;
 					if (!bcx() || typeof group !== "string" || data.Item.Target !== w.Player?.MemberNumber) return next(args);
 					const saved = snapshot(w.Player.Appearance, [group]);
+					const zero = zeroes(w.Player.Appearance, [group]);
 					const res = next(args);
 					if (saved.size) restore(w.Player.Appearance, saved);
+					if (zero.size) restoreZeroes(w.Player.Appearance, zero);
 					return res;
 				});
-				return "keeps the full craft BCX's curses compare against";
+				return "keeps the full craft and the difficulty BCX's curses compare against";
 			},
 		);
 
@@ -592,6 +632,9 @@
 			() => {
 				const gather = () => game(() => ExtendedItemGatherOptions);
 				if (release() < 134 || typeof w.ExtendedItemInit !== "function" || typeof gather() !== "function") return false;
+				// The game leaves the item's own sums out of the merge itself (BC hotfix of 20 Nov 2026): nothing to do.
+				const typedInit = String(game(() => TypedItemInit) ?? "");
+				if (/CommonOmit\(\s*Item\.Property\b/.test(typedInit) && /\[\s*"Difficulty"\s*,\s*"HeightModifier"\s*\]/.test(typedInit)) return false;
 				const KEYS = ["Difficulty", "HeightModifier"];
 				/** What the chosen options add up to, per key; a key no option or baseline sets is left out. @param {any} item */
 				const expected = (item) => {
@@ -1213,6 +1256,8 @@
 				id: "view-rebuild",
 				selfCheck: true,
 				ext: "LSCG",
+				// LSCG 0.9.19 lets the game rebuild the view after the room screen reloads.
+				fixedIn: "0.9.19",
 				title: "Map buttons vanished",
 				why: "R134 rebuilds the open room view's buttons when you come back to the room; LSCG skips the game when the view is already open (R133 did nothing there), so the map's arrows and editor stayed gone in map rooms.",
 				patients: ["LSCG"],
@@ -1322,6 +1367,8 @@
 		const f = forced(c);
 		const paused = pausedReason(c.ext);
 		if (f === "off") return { state: "off", text: "forced off" };
+		const fixedBy = fixedByExtension(c);
+		if (fixedBy && f !== "on") return { state: "idle", text: `not needed: ${EXTENSIONS[c.ext]?.label ?? c.ext} ${fixedBy} fixed this itself` };
 		if (paused && c.selfCheck && f !== "on") return { state: "running", text: `checks for the problem itself each time, so it keeps running (${paused})` };
 		if (paused && f !== "on") return { state: "paused", text: `paused by ER: ${paused}` };
 		if (paused) return { state: "running", text: `forced on (${paused})` };

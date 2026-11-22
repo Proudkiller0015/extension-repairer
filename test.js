@@ -53,7 +53,9 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'stacking-init', 'option-rules', 'default-color-compare', 'portal-code', 'missing-property', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'option-rules', 'missing-property', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			// BC hot-fixed these on live R134 (20 Nov 2026): ER's probes see it and stand down.
+			for (const id of ['stacking-init', 'default-color-compare', 'portal-code']) check(`${id} not needed (the game fixed it)`, chart[id] === 'healthy', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
 			for (const id of ['chat-width', 'modular-options']) check(`${id} is gone from ER (the game has it)`, !(id in chart), chart[id]);
 			const space = await page.evaluate(() => {
@@ -227,6 +229,23 @@ const roundTrip = () => {
 				return { property: after?.Property, item: after?.Item, worn: InventoryGet(Player, 'ItemNeck')?.Asset?.Name ?? null, after: after ?? null, sent: bundle.find((b) => b.Group === 'ItemNeck')?.Craft ?? null, chart: ER.chart().find((c) => c.id === 'bcx-curse-loop') };
 			});
 			check('BCX curse fix keeps the full craft when the server echoes a partial one', craft.property === 'Secure' && craft.item === 'LeatherCollar', craft);
+			const zero = await page.evaluate(() => {
+				// BCX curses saved before its 21 Nov fix put Difficulty 0 back on clothing; the game drops a 0 from what it sends.
+				const roundTrip = () => {
+					CharacterAppearanceSetDefault(Player);
+					InventoryWear(Player, 'JacketHoodie', 'ClothOuter');
+					InventoryGet(Player, 'ClothOuter').Property.Difficulty = 0;
+					ServerAppearanceLoadFromBundle(Player, 'Female3DCG', ServerAppearanceBundle(Player.Appearance), 1001);
+					const item = InventoryGet(Player, 'ClothOuter');
+					return { difficulty: item?.Property?.Difficulty, changed: item ? ExtendedItemInit(Player, item, false, false) : null };
+				};
+				window.BCX_Loaded = true;
+				const bcx = roundTrip();
+				delete window.BCX_Loaded;
+				return { bcx, plain: roundTrip() };
+			});
+			check('BCX curse fix keeps a cursed difficulty of 0 on clothing through a reload', zero.bcx.difficulty === 0 && zero.bcx.changed === false, zero);
+			check('without BCX the game drops that 0 as before', zero.plain.difficulty === undefined, zero);
 			// LSCG's hook skips the game when the view is already open; R134 rebuilds the view's buttons there.
 			const views = await page.evaluate(() => {
 				const map = ChatRoomViews.Map;
@@ -250,6 +269,26 @@ const roundTrip = () => {
 			});
 			check('the open map view rebuilds once without LSCG', views.plain === 1, views);
 			check('the open map view rebuilds once behind an LSCG-style hook', views.lscg === 1, views);
+			const fixedLscg = await page.evaluate(() => {
+				// LSCG 0.9.19 fixed its hook itself: ER's view fix stands down and says so.
+				const map = ChatRoomViews.Map;
+				const activate = map.Activate;
+				let built = 0;
+				map.Activate = () => { built++; };
+				const before = ChatRoomActiveView;
+				ChatRoomActiveView = map;
+				const lscg = bcModSdk.registerMod({ name: 'LSCG', fullName: 'LSCG', version: '0.9.19' });
+				lscg.hookFunction('ChatRoomActivateView', 1, (args, next) => { if (ChatRoomActiveView != ChatRoomViews[args[0]]) next(args); });
+				ChatRoomActivateView('Map');
+				map.Activate = activate;
+				ChatRoomActiveView = before;
+				ER.open();
+				const text = document.getElementById('er-panel').textContent;
+				document.getElementById('er-panel').remove();
+				lscg.unload();
+				return { built, says: /not needed: LSCG 0\.9\.19 fixed this itself/.test(text) };
+			});
+			check('an extension version that fixed the problem itself stands ER down (LSCG 0.9.19)', fixedLscg.built === 0 && fixedLscg.says, fixedLscg);
 			const sw = await page.evaluate(() => {
 				const out = {};
 				const call = () => { try { return typeof PreferenceArousalIsActive(); } catch (e) { return 'throws'; } };
