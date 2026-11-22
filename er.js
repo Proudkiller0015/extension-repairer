@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.19.0";
+	const VERSION = "1.19.1";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -432,11 +432,11 @@
 		treat(
 			{
 				id: "bcx-curse-loop",
-				// It only steps in when the server actually sends a partial craft back, so a BCX update cannot make it wrong.
+				// It reads what each curse holds from BCX itself, so a BCX update cannot make it wrong.
 				selfCheck: true,
 				ext: "BCX",
 				title: "BCX curses on crafted items and clothing looped",
-				why: "Since R133 the server sends crafted items back with only part of their craft data; BCX curses compare the full craft, see a change, \"undo all changes\" and loop until BCX's protection switches the curse off. Clothing and body curses (ears, tail straps, body markings...) loop the same way when the curse saved a difficulty of 0: BCX puts the 0 back, the game leaves it out of what it sends, the reload drops it, and the next check sees a change again, until the server cuts the player off with ErrorRateLimited. ER keeps the full craft and that 0 on the player's own items. BCX's dev build of 21 Nov 2026 stops cursing the difficulty of clothing; this part then finds nothing to do.",
+				why: "Since R133 the server sends crafted items back with only part of their craft data, and the game leaves a difficulty of 0 out of what it sends. A BCX curse keeps its own copy of the item: when that copy has the full craft (or a 0 the reload dropped), BCX sees a change after every reload, \"undoes all changes\", resends, and loops until BCX's protection switches the curse off or the server cuts the player off with ErrorRateLimited. ER asks BCX what each curse holds and, after a reload, gives the cursed item exactly that craft and difficulty, so BCX finds nothing to undo. It only touches items whose curse holds the same craft (same name, maker and description).",
 				patients: ["BCX"],
 			},
 			() => {
@@ -445,81 +445,77 @@
 				const PARTIAL = ["Name", "MemberName", "MemberNumber", "Description", "Effects", "Private"];
 				const same = (/** @type {unknown} */ a, /** @type {unknown} */ b) => (typeof w.CommonDeepEqual === "function" ? w.CommonDeepEqual(a, b) : JSON.stringify(a) === JSON.stringify(b));
 				const copy = (/** @type {any} */ o) => (typeof w.CommonCloneDeep === "function" ? w.CommonCloneDeep(o) : JSON.parse(JSON.stringify(o)));
-				/** A full craft has data beyond what a partial one keeps. @param {any} craft */
-				const isFull = (craft) => craft != null && typeof craft === "object" && Object.keys(craft).some((k) => !PARTIAL.includes(k) && k !== "Partial");
-				/** The full crafts of the player's worn items, by group. @param {any[]} appearance @param {string[]} [groups] */
-				const snapshot = (appearance, groups) => {
-					/** @type {Map<string, { name: string, craft: any }>} */
-					const saved = new Map();
-					for (const item of appearance || []) {
-						if (!item?.Asset || !isFull(item.Craft)) continue;
-						const group = item.Asset.Group.Name;
-						if (groups && !groups.includes(group)) continue;
-						saved.set(group, { name: item.Asset.Name, craft: copy(item.Craft) });
+				const isObject = (/** @type {unknown} */ o) => o != null && typeof o === "object" && !Array.isArray(o);
+				// The game fills in defaults on load (Effects: {}, Private: false), so missing and default count as equal.
+				const norm = (/** @type {string} */ k, /** @type {any} */ v) => (v ?? (k === "Effects" ? {} : k === "Private" ? false : null));
+				/** Two crafts are the same craft when the part the server keeps matches. @param {any} a @param {any} b */
+				const sameCraft = (a, b) => isObject(a) && isObject(b) && PARTIAL.every((k) => same(norm(k, a[k]), norm(k, b[k])));
+				/** @type {any} */
+				let api = null;
+				/** BCX's API for ER (BCX hands it to mods registered with ModSDK), once BCX is up. */
+				const bcxApi = () => {
+					if (api) return api;
+					if (!w.BCX_Loaded || typeof w.bcx?.getModApi !== "function") return null;
+					try {
+						api = w.bcx.getModApi("ER");
+					} catch {
+						api = null;
 					}
-					return saved;
-				};
-				/** Puts the full craft back on items that came back partial but are otherwise the same craft. */
-				const restore = (/** @type {any[]} */ appearance, /** @type {Map<string, { name: string, craft: any }>} */ saved) => {
-					for (const item of appearance || []) {
-						if (!item?.Asset || item.Craft == null || typeof item.Craft !== "object" || isFull(item.Craft)) continue;
-						const old = saved.get(item.Asset.Group.Name);
-						if (!old || old.name !== item.Asset.Name) continue;
-						// The game fills in defaults on load (Effects: {}, Private: false), so missing and default count as equal.
-						const norm = (/** @type {string} */ k, /** @type {any} */ v) => (v ?? (k === "Effects" ? {} : k === "Private" ? false : null));
-						if (!PARTIAL.every((k) => same(norm(k, old.craft[k]), norm(k, item.Craft[k])))) continue;
-						item.Craft = Object.assign(old.craft, item.Craft, { Partial: old.craft.Partial });
-						if (item.Craft.Partial === undefined) delete item.Craft.Partial;
-					}
+					return api;
 				};
 				/**
-				 * Clothing and body items carrying a difficulty of 0, which only a BCX curse puts there (the game leaves a
-				 * 0 out of what it sends, so a reload drops it).
-				 * @param {any[]} appearance @param {string[]} [groups]
+				 * Gives the player's cursed items what their curse holds: the curse's craft when it is the same craft, and
+				 * the curse's difficulty of 0 when the reload dropped it.
+				 * @param {string[]} [groups]
 				 */
-				const zeroes = (appearance, groups) => {
-					/** @type {Map<string, string>} */
-					const saved = new Map();
-					for (const item of appearance || []) {
-						if (!item?.Asset || item.Asset.Group.Category !== "Appearance" || item.Property?.Difficulty !== 0) continue;
-						const group = item.Asset.Group.Name;
-						if (!groups || groups.includes(group)) saved.set(group, item.Asset.Name);
+				const matchCurses = (groups) => {
+					const bcx = bcxApi();
+					if (!bcx || typeof bcx.getCurseInfo !== "function") return;
+					for (const item of w.Player?.Appearance ?? []) {
+						const group = item?.Asset?.Group?.Name;
+						if (!group || (groups && !groups.includes(group))) continue;
+						/** @type {any} */
+						let curse = null;
+						try {
+							curse = bcx.getCurseInfo(group);
+						} catch {
+							continue;
+						}
+						if (!curse || !curse.active || curse.asset?.Name !== item.Asset.Name) continue;
+						if (isObject(curse.craft) && sameCraft(curse.craft, item.Craft) && !same(curse.craft, item.Craft)) item.Craft = copy(curse.craft);
+						if (curse.curseProperty && isObject(curse.property) && curse.property.Difficulty === 0) {
+							if (!isObject(item.Property)) item.Property = {};
+							if (!("Difficulty" in item.Property)) item.Property.Difficulty = 0;
+						}
 					}
-					return saved;
 				};
-				/** Puts the 0 back on the same item when the reload dropped it. @param {any[]} appearance @param {Map<string, string>} saved */
-				const restoreZeroes = (appearance, saved) => {
-					for (const item of appearance || []) {
-						if (!item?.Asset || saved.get(item.Asset.Group.Name) !== item.Asset.Name) continue;
-						if (!item.Property || typeof item.Property !== "object") item.Property = {};
-						if (!("Difficulty" in item.Property)) item.Property.Difficulty = 0;
-					}
-				};
-				const bcx = () => !!w.BCX_Loaded;
 				// Full appearance reloads: the echo of the player's own appearance, room syncs, refreshes.
 				hook("ServerAppearanceLoadFromBundle", 0, (args, next) => {
-					const C = args[0];
-					if (!bcx() || C !== w.Player || args[4]) return next(args);
-					const saved = snapshot(C.Appearance);
-					const zero = zeroes(C.Appearance);
 					const res = next(args);
-					if (saved.size) restore(C.Appearance, saved);
-					if (zero.size) restoreZeroes(C.Appearance, zero);
+					if (args[0] === w.Player && !args[4] && w.BCX_Loaded) {
+						try {
+							matchCurses();
+						} catch (e) {
+							// A curse we could not read is left to BCX.
+						}
+					}
 					return res;
 				});
 				// One item changed by someone else (e.g. tightening the cursed collar).
 				hook("ChatRoomSyncItem", 0, (args, next) => {
+					const res = next(args);
 					const data = args[0];
 					const group = data?.Item?.Group;
-					if (!bcx() || typeof group !== "string" || data.Item.Target !== w.Player?.MemberNumber) return next(args);
-					const saved = snapshot(w.Player.Appearance, [group]);
-					const zero = zeroes(w.Player.Appearance, [group]);
-					const res = next(args);
-					if (saved.size) restore(w.Player.Appearance, saved);
-					if (zero.size) restoreZeroes(w.Player.Appearance, zero);
+					if (typeof group === "string" && data.Item.Target === w.Player?.MemberNumber && w.BCX_Loaded) {
+						try {
+							matchCurses([group]);
+						} catch (e) {
+							// A curse we could not read is left to BCX.
+						}
+					}
 					return res;
 				});
-				return "keeps the full craft and the difficulty BCX's curses compare against";
+				return "cursed items get the craft and difficulty their BCX curse holds";
 			},
 		);
 

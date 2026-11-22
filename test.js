@@ -214,38 +214,61 @@ const roundTrip = () => {
 				return { first, after: rope.Property.Difficulty };
 			});
 			check('an item difficulty no longer grows when it is initialised again', stack.after === stack.first, stack);
-			const craft = await page.evaluate(() => {
+			const curses = await page.evaluate(() => {
+				// A stand-in for BCX's mod API: each group's curse, as getCurseInfo hands it out.
+				const held = {};
+				window.bcx = { getModApi: () => ({ getCurseInfo: (g) => (held[g] ? { active: true, asset: AssetGet('Female3DCG', g, held[g].Name), curseProperty: !!held[g].curseProperty, property: held[g].Property, craft: held[g].Craft, color: undefined } : null) }) };
 				window.BCX_Loaded = true;
 				Player.MemberNumber = 1001;
 				Player.Name = 'Rose';
-				CharacterAppearanceSetDefault(Player);
-				InventoryWear(Player, 'LeatherCollar', 'ItemNeck');
-				const full = { Name: 'Cursed collar', MemberName: 'Rose', MemberNumber: 1001, Description: 'test', Property: 'Secure', Lock: '', Color: '#ff0000', Item: 'LeatherCollar', Private: false, ItemProperty: {} };
-				InventoryGet(Player, 'ItemNeck').Craft = { ...full };
-				const bundle = ServerAppearanceBundle(Player.Appearance).map((b) => (b.Group === 'ItemNeck' ? { ...b, Craft: { Name: full.Name, MemberName: full.MemberName, MemberNumber: full.MemberNumber, Description: full.Description, Private: false } } : b));
-				ServerAppearanceLoadFromBundle(Player, 'Female3DCG', bundle, 1001);
-				const after = InventoryGet(Player, 'ItemNeck')?.Craft;
-				delete window.BCX_Loaded;
-				return { property: after?.Property, item: after?.Item, worn: InventoryGet(Player, 'ItemNeck')?.Asset?.Name ?? null, after: after ?? null, sent: bundle.find((b) => b.Group === 'ItemNeck')?.Craft ?? null, chart: ER.chart().find((c) => c.id === 'bcx-curse-loop') };
-			});
-			check('BCX curse fix keeps the full craft when the server echoes a partial one', craft.property === 'Secure' && craft.item === 'LeatherCollar', craft);
-			const zero = await page.evaluate(() => {
-				// BCX curses saved before its 21 Nov fix put Difficulty 0 back on clothing; the game drops a 0 from what it sends.
-				const roundTrip = () => {
+				const echo = () => ServerAppearanceLoadFromBundle(Player, 'Female3DCG', ServerAppearanceBundle(Player.Appearance), 1001);
+				const full = { Item: 'PaddedBeltCollar', Name: 'Collar of Remembrance', Description: '', Color: '#3596FF,#F1B800,#B7B6B6,#030303,#000000,#C2A218', Lock: '', Private: true, ItemProperty: {}, TypeRecord: null, Effects: { Comfy: 1 }, MemberNumber: 2002, MemberName: 'lily', Partial: false };
+				const partial = { Name: full.Name, MemberName: full.MemberName, MemberNumber: full.MemberNumber, Description: full.Description, Effects: { Comfy: 1 }, Private: true };
+				const out = {};
+				const wearCollar = (craft) => {
+					CharacterAppearanceSetDefault(Player);
+					InventoryWear(Player, 'PaddedBeltCollar', 'ItemNeck');
+					InventoryGet(Player, 'ItemNeck').Craft = JSON.parse(JSON.stringify(craft));
+				};
+				// The curse holds the full craft; the server sends a partial one back: the item gets the full craft.
+				held.ItemNeck = { Name: 'PaddedBeltCollar', Craft: full };
+				wearCollar(full);
+				echo();
+				out.fullCurse = CommonDeepEqual(InventoryGet(Player, 'ItemNeck').Craft, full);
+				// The curse holds the partial craft (saved after a relog): the item keeps the partial one.
+				held.ItemNeck = { Name: 'PaddedBeltCollar', Craft: partial };
+				wearCollar(full);
+				echo();
+				out.partialCurse = CommonDeepEqual(InventoryGet(Player, 'ItemNeck').Craft, partial);
+				// A curse holding another craft is left alone.
+				held.ItemNeck = { Name: 'PaddedBeltCollar', Craft: { ...full, Name: 'Another collar' } };
+				wearCollar(full);
+				echo();
+				out.otherCraft = InventoryGet(Player, 'ItemNeck').Craft.Name === full.Name && InventoryGet(Player, 'ItemNeck').Craft.Item === undefined;
+				delete held.ItemNeck;
+				// Clothing: a curse that saved Difficulty 0 keeps it through a reload; one that did not, does not get it.
+				const shoes = (curseProps) => {
+					held.ClothOuter = { Name: 'JacketHoodie', curseProperty: true, Property: curseProps };
 					CharacterAppearanceSetDefault(Player);
 					InventoryWear(Player, 'JacketHoodie', 'ClothOuter');
 					InventoryGet(Player, 'ClothOuter').Property.Difficulty = 0;
-					ServerAppearanceLoadFromBundle(Player, 'Female3DCG', ServerAppearanceBundle(Player.Appearance), 1001);
+					echo();
 					const item = InventoryGet(Player, 'ClothOuter');
-					return { difficulty: item?.Property?.Difficulty, changed: item ? ExtendedItemInit(Player, item, false, false) : null };
+					return { difficulty: item?.Property?.Difficulty, changed: ExtendedItemInit(Player, item, false, false) };
 				};
-				window.BCX_Loaded = true;
-				const bcx = roundTrip();
+				out.zeroKept = shoes({ Difficulty: 0 });
+				out.zeroNotCursed = shoes({});
+				delete held.ClothOuter;
 				delete window.BCX_Loaded;
-				return { bcx, plain: roundTrip() };
+				out.plain = shoes({ Difficulty: 0 });
+				return out;
 			});
-			check('BCX curse fix keeps a cursed difficulty of 0 on clothing through a reload', zero.bcx.difficulty === 0 && zero.bcx.changed === false, zero);
-			check('without BCX the game drops that 0 as before', zero.plain.difficulty === undefined, zero);
+			check('BCX curse fix: a curse holding the full craft gets it back after the server sends a partial one', curses.fullCurse === true, curses);
+			check('BCX curse fix: a curse holding the partial craft keeps the item partial (no endless resend)', curses.partialCurse === true, curses);
+			check('BCX curse fix: a curse holding another craft is left alone', curses.otherCraft === true, curses);
+			check('BCX curse fix keeps a cursed difficulty of 0 on clothing through a reload', curses.zeroKept.difficulty === 0 && curses.zeroKept.changed === false, curses);
+			check('BCX curse fix adds no 0 the curse does not hold', curses.zeroNotCursed.difficulty === undefined, curses);
+			check('without BCX the game drops that 0 as before', curses.plain.difficulty === undefined, curses);
 			// LSCG's hook skips the game when the view is already open; R134 rebuilds the view's buttons there.
 			const views = await page.evaluate(() => {
 				const map = ChatRoomViews.Map;
