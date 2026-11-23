@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'option-rules', 'missing-property', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'option-rules', 'missing-property', 'activity-buttons', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// BC hot-fixed these on live R134 (20 Nov 2026): ER's probes see it and stand down.
 			for (const id of ['stacking-init', 'default-color-compare', 'portal-code']) check(`${id} not needed (the game fixed it)`, chart[id] === 'healthy', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
@@ -94,6 +94,45 @@ const roundTrip = () => {
 				return { err };
 			});
 			check('an item with no Property does not crash the vibrator screen effect (BCAR ear wiggle)', noProp.err === null, noProp);
+			const menu = await page.evaluate(async () => {
+				// Echo's plushie activities threw from their CreateForActivity hook, and one failed button left the
+				// whole activity menu empty on every later open. A stand-in add-on throws for one activity (and reads
+				// a held item's Property the way Echo does); the menu must still show every activity.
+				window.ActivityAllowed = () => true;
+				Player.SavedExpressions = Player.SavedExpressions || [];
+				const C = CharacterLoadNPC('NPC_ERActivities');
+				C.MemberNumber = 3003;
+				C.AllowItem = true;
+				C.ArousalSettings = JSON.parse(JSON.stringify(Player.ArousalSettings || {}));
+				C.ArousalSettings.Active = 'Hybrid';
+				const held = InventoryWear(C, 'Plushie', 'ItemHandheld', 'Default', undefined, undefined, undefined, false);
+				if (held) held.Property = undefined;
+				const mod = bcModSdk.registerMod({ name: 'ERTestBrokenButtons', fullName: 'ER test', version: '1' });
+				let first = null;
+				let propertyRead = null;
+				mod.hookFunction('ElementButton.CreateForActivity', 0, (args, next) => {
+					const plushie = args[2].Appearance.find((i) => i.Asset.Name === 'Plushie');
+					if (plushie) propertyRead = typeof plushie.Property;
+					first ??= args[1].Activity.Name;
+					if (args[1].Activity.Name === first) throw new TypeError('broken add-on button');
+					return next(args);
+				});
+				const out = {};
+				for (const label of ['first', 'again']) {
+					CharacterSetCurrent(C);
+					C.FocusGroup = AssetGroupGet('Female3DCG', 'ItemArms');
+					DialogChangeMode('activities');
+					await new Promise((r) => setTimeout(r, 500));
+					out[label] = { list: DialogActivity.length, buttons: document.getElementById('dialog-activity-grid')?.children.length ?? -1 };
+					DialogLeave();
+					await new Promise((r) => setTimeout(r, 300));
+				}
+				mod.unload();
+				out.propertyRead = propertyRead;
+				return out;
+			});
+			check('a broken add-on activity button does not empty the activity menu', menu.first.list > 0 && menu.first.buttons === menu.first.list && menu.again.buttons === menu.again.list, menu);
+			check('a held item with no Property has one by the time add-ons draw activity buttons', menu.propertyRead === 'object', menu);
 			check('ChatRoomSpace/ChatRoomGame follow the room', space.inRoom[0] === 'M' && space.inRoom[1] === 'LARP', space);
 			check('ChatRoomSpace follows the lobby outside a room', space.lobby === 'Asylum', space);
 			check('InformationSheetSecondScreenRun can be hooked', await page.evaluate(() => {

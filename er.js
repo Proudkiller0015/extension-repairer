@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.19.1";
+	const VERSION = "1.20.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -253,13 +253,13 @@
 
 	/**
 	 * Hooks a game function through ModSDK, so other add-ons' hooks on it keep working.
-	 * @param {string} name
+	 * @param {string} name A global, or a dotted path such as "ElementButton.CreateForActivity"
 	 * @param {number} priority Higher runs first; ER's argument fixes run before everyone else.
 	 * @param {(args: any[], next: (args: any[]) => any) => any} hook
 	 * @returns {boolean}
 	 */
 	function hook(name, priority, hook) {
-		if (!sdk || typeof w[name] !== "function") return false;
+		if (!sdk || typeof name.split(".").reduce((/** @type {any} */ o, k) => o?.[k], w) !== "function") return false;
 		const fix = currentFix;
 		// Every call checks the player's switches and the auto-pause, so turning a fix off acts at once.
 		sdk.hookFunction(name, priority, fix ? (/** @type {any[]} */ args, /** @type {(a: any[]) => any} */ next) => (active(fix) ? hook(args, next) : next(args)) : hook);
@@ -1000,6 +1000,44 @@
 				];
 				if (!hooked.some(Boolean)) return false;
 				return "an item with no Property gets an empty one before it is drawn";
+			},
+		);
+
+		treat(
+			{
+				id: "activity-buttons",
+				selfCheck: true,
+				ext: "game",
+				title: "The activity menu went empty and stayed empty",
+				why: "R134 builds all of the activity menu's buttons in one go. If an add-on's picture or label code throws for a single activity, the menu shows nothing, and it stays empty every time it opens again. Echo's activity add-on (动作拓展) throws for its plushie activities when a 玩偶 plushie has no Property, and with SlimeCheat's God mode those activities show on everyone. ER gives the item an empty Property first; if a button still fails, ER draws that one button the game's own way, so the rest of the menu stays.",
+				patients: ["Echo 动作拓展 (plushie activities)", "any add-on that hooks activity buttons"],
+			},
+			() => {
+				if (release() < 134) return false;
+				const name = "ElementButton.CreateForActivity";
+				/** @param {any} C */
+				const fill = (C) => {
+					if (!C || !Array.isArray(C.Appearance)) return;
+					for (const item of C.Appearance) if (item && item.Property == null) item.Property = {};
+				};
+				/** @type {Set<string>} */
+				const warned = new Set();
+				const hooked = hook(name, 100000, (args, next) => {
+					fill(args[2]);
+					fill(w.Player);
+					try {
+						return next(args);
+					} catch (e) {
+						const activity = String(args[1]?.Activity?.Name ?? "?");
+						if (!warned.has(activity)) {
+							warned.add(activity);
+							console.warn(`ER: an add-on's button for the activity "${activity}" failed, so it is drawn without that add-on's changes:`, e);
+						}
+						return sdk.callOriginal(name, args);
+					}
+				});
+				if (!hooked) return false;
+				return "a broken activity button no longer empties the activity menu";
 			},
 		);
 
