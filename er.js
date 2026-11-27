@@ -13,7 +13,7 @@
 	"use strict";
 
 	/** ER's version; the loader always fetches the newest copy, so this is what players run. */
-	const VERSION = "1.20.0";
+	const VERSION = "1.21.0";
 	/** Where the source lives. */
 	const REPO = "https://github.com/Proudkiller0015/extension-repairer";
 
@@ -1038,6 +1038,88 @@
 				});
 				if (!hooked) return false;
 				return "a broken activity button no longer empties the activity menu";
+			},
+		);
+
+		treat(
+			{
+				id: "extension-pages",
+				selfCheck: true,
+				ext: "game",
+				title: "Extensions past the third column were cut off",
+				why: "R134's Preferences > Extensions grid shows 3 columns of 7 buttons. A 22nd extension starts a 4th column the screen has no room for, so the 4th column was cut in half and any further ones could not be reached. ER splits the buttons into pages of 21 and adds page buttons next to Exit. It only does this when there are more buttons than fit.",
+				patients: ["every add-on with a settings page"],
+			},
+			() => {
+				if (release() < 134 || typeof w.PreferenceSubscreenExtensionsLoad !== "function") return false;
+				const GRID = "preference-extensions-grid";
+				const MENU = "preference-subscreen-menu";
+				const IDS = ["er-ext-prev", "er-ext-page", "er-ext-next"];
+				let page = 0;
+				/** @param {HTMLElement} b @param {boolean} hide */
+				const hide = (b, hide) => {
+					b.toggleAttribute("hidden", hide);
+					b.style.display = hide ? "none" : "";
+				};
+				/**
+				 * How many buttons the grid shows at once: its rows times its columns (3 x 7 on R134). Read with every button
+				 * hidden, since a 22nd button adds a column the browser would count too.
+				 * @param {HTMLElement} grid @param {HTMLElement[]} buttons
+				 */
+				const perPage = (grid, buttons) => {
+					buttons.forEach((b) => hide(b, true));
+					const cs = getComputedStyle(grid);
+					const tracks = (/** @type {string} */ s) => (s && s !== "none" ? s.trim().split(/\s+/).length : 0);
+					const n = tracks(cs.gridTemplateRows) * tracks(cs.gridTemplateColumns);
+					return n > 0 ? n : 21;
+				};
+				const paginate = () => {
+					for (const id of IDS) document.getElementById(id)?.remove();
+					const grid = document.getElementById(GRID);
+					const menu = document.getElementById(MENU);
+					if (!grid || !menu) return;
+					const buttons = /** @type {HTMLElement[]} */ (Array.from(grid.children));
+					const size = perPage(grid, buttons);
+					// Only a grid that runs sideways past its columns needs pages; one that already fits (or scrolls down) is left alone.
+					if (buttons.length <= size || getComputedStyle(grid).gridAutoFlow.indexOf("column") < 0) {
+						buttons.forEach((b) => hide(b, false));
+						return;
+					}
+					const pages = Math.ceil(buttons.length / size);
+					const label = document.createElement("span");
+					const show = (/** @type {number} */ p) => {
+						page = ((p % pages) + pages) % pages;
+						buttons.forEach((b, i) => hide(b, Math.floor(i / size) !== page));
+						label.textContent = `${page + 1}/${pages}`;
+						grid.scrollLeft = 0;
+					};
+					/** @param {string} id @param {string} image @param {string} tip @param {number} step */
+					const arrow = (id, image, tip, step) =>
+						w.ElementButton.Create(id, () => show(page + step), { image, tooltip: tip, tooltipPosition: "bottom" });
+					const prev = arrow(IDS[0], "Icons/Prev.png", "Previous page", -1);
+					const next = arrow(IDS[2], "Icons/Next.png", "Next page", 1);
+					label.id = IDS[1];
+					label.style.cssText = "align-self: center; padding: 0 0.5em; color: black; white-space: nowrap; font-size: 1.2em;";
+					// The menu runs right to left from Exit: this reads "< 1/2 >" then Exit.
+					menu.append(next, label, prev);
+					show(page);
+				};
+				const hooked = hook("PreferenceSubscreenExtensionsLoad", 1000, (args, next) => {
+					const res = next(args);
+					try {
+						paginate();
+					} catch (e) {
+						console.warn("ER: could not split the extensions into pages:", e);
+					}
+					return res;
+				});
+				if (!hooked) return false;
+				// A new visit to Preferences starts on the first page; coming back from an add-on's settings keeps the page.
+				hook("PreferenceSubscreenMainLoad", 1000, (args, next) => {
+					page = 0;
+					return next(args);
+				});
+				return "the extensions list is split into pages when it is too long for the screen";
 			},
 		);
 

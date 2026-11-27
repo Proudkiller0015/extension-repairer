@@ -53,7 +53,7 @@ const roundTrip = () => {
 			const { page, errors } = await open(browser, BUILDS.live);
 			const chart = await page.evaluate(() => Object.fromEntries(ER.chart().map((c) => [c.id, c.status])));
 			check('every fix runs without failing', Object.values(chart).every((s) => s !== 'failed'), chart);
-			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'option-rules', 'missing-property', 'activity-buttons', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
+			for (const id of ['room-space', 'info-sheet', 'online-profile', 'room-admin', 'controller', 'bcx-curse-loop', 'fetch-request', 'baseline-options', 'saved-settings', 'option-rules', 'missing-property', 'activity-buttons', 'extension-pages', 'wce-arousal', 'image-addresses', 'minigame-return', 'late-masks', 'default-color', 'arousal-active', 'item-header', 'view-rebuild']) check(`${id} treated`, chart[id] === 'treated', chart[id]);
 			// BC hot-fixed these on live R134 (20 Nov 2026): ER's probes see it and stand down.
 			for (const id of ['stacking-init', 'default-color-compare', 'portal-code']) check(`${id} not needed (the game fixed it)`, chart[id] === 'healthy', chart[id]);
 			// The game shipped these in R134 Beta 2, so ER's copies stand down.
@@ -179,6 +179,20 @@ const roundTrip = () => {
 				return { ended: !!window.__erEnded, error };
 			});
 			check('a minigame return given by name runs (LSCG sleepy drink)', mini.ended && !mini.error, mini);
+			const pages = await page.evaluate(async () => {
+				// 30 add-ons with a settings page: R134 fits 21 (3 x 7), so ER splits them into pages.
+				for (let i = 1; i <= 30; i++) PreferenceRegisterExtensionSetting({ Identifier: 'ERTestExt' + i, ButtonText: 'ER test ' + i, Image: 'Icons/Preference.png', load() {}, run() {}, click() {}, exit() {} });
+				const shown = () => [...document.querySelectorAll('#preference-extensions-grid > button')].filter((b) => b.offsetParent).length;
+				await PreferenceOpenSubscreen('Extensions');
+				const first = [shown(), document.getElementById('er-ext-page')?.textContent];
+				document.getElementById('er-ext-next')?.click();
+				const second = [shown(), document.getElementById('er-ext-page')?.textContent];
+				await PreferenceOpenSubscreen('Main');
+				for (let i = 1; i <= 30; i++) delete PreferenceExtensionsSettings['ERTestExt' + i];
+				await CommonSetScreen('Character', 'Login');
+				return { first, second };
+			});
+			check('31 extensions show as pages of 21 (1/2, then 2/2 with 10)', pages.first[0] === 21 && pages.first[1] === '1/2' && pages.second[0] === 10 && pages.second[1] === '2/2', pages);
 			const rules = await page.evaluate(() => {
 				// Echo's batons: an option allows an activity the game does not have; R134 strips it and the option puts it back.
 				const C = CharacterLoadNPC('NPC_ERRules');
